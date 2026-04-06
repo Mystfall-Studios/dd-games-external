@@ -207,10 +207,13 @@
     let data;
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/check-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: input })
-      });
+      method: "POST",
+      headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d"
+      },
+     body: JSON.stringify({ password: input })
+    });
       data = await res.json();
     } catch(e) {
       error.textContent = "Connection error. Please try again.";
