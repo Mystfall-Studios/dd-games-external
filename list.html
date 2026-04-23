@@ -234,8 +234,12 @@ async function loadUser() {
 }
 
 function requestGame() {
-  alert("Due to technical issues, you must join our Discord to Request Games!")
+  alert("We are working on a new system to request games. Please join our Discord in the meantime to request games.")
 };
+function openDiscord() {
+  alert("Discord may be blocked on school/workspace networks. If Discord is blocked, Go to bit.ly/dd-games-dc on another device without restrictions or on your Home Wi-Fi.")
+  window.open('https://discord.gg/HqQDKw7UWZ')
+}
 
 /* ===== RENDER GAMES ===== */
 function renderGames(isPremiumUser) {
