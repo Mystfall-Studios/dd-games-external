@@ -438,9 +438,11 @@ function showMain(){
   // Load friends panel for logged-in non-guest users
   if (!isGuest()) {
   // Wait for the DOM to be interactive before importing
+  console.log("Loading Friend Panel...")
   window.addEventListener('DOMContentLoaded', () => {
     import("/dd-games/assets/friends-panel.js")
       .catch(e => console.warn("Friends panel load failed:", e));
+    console.log("Friend panel should be loaded!")
   });
 }
 }
