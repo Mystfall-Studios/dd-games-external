@@ -65,6 +65,27 @@ button.danger { background:#c0392b; }
 }
 .code-hint { font-size:13px; color:#aaa; margin-top:6px; }
 hr { border-color:#ffffff33; margin:16px 0; }
+
+/* username availability indicator */
+#usernameStatus {
+  font-size:13px;
+  margin-top:4px;
+  min-height:18px;
+  transition: color 0.2s;
+}
+#usernameStatus.available { color:#4ade80; }
+#usernameStatus.taken     { color:#f87171; }
+#usernameStatus.checking  { color:#94a3b8; }
+
+/* edit username status */
+#editUsernameStatus {
+  font-size:13px;
+  margin-top:4px;
+  min-height:18px;
+}
+#editUsernameStatus.available { color:#4ade80; }
+#editUsernameStatus.taken     { color:#f87171; }
+#editUsernameStatus.checking  { color:#94a3b8; }
 </style>
 </head>
 <body>
@@ -79,8 +100,9 @@ hr { border-color:#ffffff33; margin:16px 0; }
   <!-- SETUP -->
   <div id="setup" class="panel hidden">
     <h2>Welcome to DD Games</h2>
-    <input id="nameInput" placeholder="Enter your name">
-    <button onclick="createAccount()">Create Account</button>
+    <input id="nameInput" placeholder="Choose a username" maxlength="20" autocomplete="off">
+    <div id="usernameStatus"></div>
+    <button id="createBtn" onclick="createAccount()" disabled>Create Account</button>
     <hr>
     <button class="secondary" onclick="showPanel('linkEntry')">🔗 Link Existing Account</button>
     <button class="secondary" onclick="continueAsGuest()">👤 Continue as Guest</button>
@@ -117,8 +139,9 @@ hr { border-color:#ffffff33; margin:16px 0; }
     <p>OS: <span id="osSpan"></span></p>
     <p>Browser: <span id="browserSpan"></span></p>
     <p>IP: <span id="ipSpan"></span></p>
-    <input id="editName">
-    <button onclick="saveName()">Save Name</button>
+    <input id="editName" maxlength="20" autocomplete="off">
+    <div id="editUsernameStatus"></div>
+    <button id="saveNameBtn" onclick="saveName()">Save Username</button>
     <hr>
     <button class="secondary" onclick="showGenerateCode()">🔗 Link Another Device</button>
     <button class="secondary" onclick="showMergeWarning()" style="background:#b45309;">🔀 Merge with Another Account</button>
@@ -144,7 +167,7 @@ hr { border-color:#ffffff33; margin:16px 0; }
     <ul style="text-align:left;line-height:1.8;">
       <li>Your <b>Playtime</b> from both accounts will be added together</li>
       <li>If either account has <b>Premium</b>, the merged account keeps it</li>
-      <li>Your <b>Name, Access</b> and all other data stays as <b>your</b> account</li>
+      <li>Your <b>Username, Access</b> and all other data stays as <b>your</b> account</li>
       <li>The <b>other account will be permanently deleted</b></li>
     </ul>
     <p>To proceed, generate a code on the <b>other account</b> via its Account Info → Link Another Device, then enter it below.</p>
@@ -165,6 +188,7 @@ hr { border-color:#ffffff33; margin:16px 0; }
   </div>
 
 </div>
+<script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
@@ -204,6 +228,105 @@ let deviceID = getDeviceID();
 const info = getInfo();
 let userRow = null;
 let ipAddr = "";
+
+// ── Username availability check ──────────────────────────────────────────
+let usernameCheckTimer = null;
+
+async function checkUsernameAvailable(username, excludeID = null) {
+  if (!username || username.trim().length < 2) return null;
+  let query = supabase
+    .from("users")
+    .select("user_id")
+    .ilike('"Name"', username.trim());
+  if (excludeID) query = query.neq("user_id", excludeID);
+  const { data } = await query;
+  return !data || data.length === 0; // true = available
+}
+
+// Setup form username watcher
+el("nameInput").addEventListener("input", () => {
+  const val = el("nameInput").value.trim();
+  const statusEl = el("usernameStatus");
+  const btn = el("createBtn");
+
+  clearTimeout(usernameCheckTimer);
+  btn.disabled = true;
+
+  if (val.length < 2) {
+    statusEl.textContent = val.length > 0 ? "Username must be at least 2 characters." : "";
+    statusEl.className = "taken";
+    return;
+  }
+  if (val.length > 20) {
+    statusEl.textContent = "Username too long (max 20 characters).";
+    statusEl.className = "taken";
+    return;
+  }
+  if (!/^[a-zA-Z0-9_\- ]+$/.test(val)) {
+    statusEl.textContent = "Only letters, numbers, spaces, _ and - allowed.";
+    statusEl.className = "taken";
+    return;
+  }
+
+  statusEl.textContent = "Checking…";
+  statusEl.className = "checking";
+
+  usernameCheckTimer = setTimeout(async () => {
+    const available = await checkUsernameAvailable(val);
+    if (available) {
+      statusEl.textContent = "✓ Username available!";
+      statusEl.className = "available";
+      btn.disabled = false;
+    } else {
+      statusEl.textContent = "✗ Username already taken.";
+      statusEl.className = "taken";
+      btn.disabled = true;
+    }
+  }, 500);
+});
+
+// Edit username watcher
+let editUsernameCheckTimer = null;
+el("editName").addEventListener("input", () => {
+  const val = el("editName").value.trim();
+  const statusEl = el("editUsernameStatus");
+  const btn = el("saveNameBtn");
+
+  clearTimeout(editUsernameCheckTimer);
+  btn.disabled = true;
+
+  if (val === (userRow?.Name || "")) {
+    statusEl.textContent = "";
+    btn.disabled = false;
+    return;
+  }
+  if (val.length < 2) {
+    statusEl.textContent = val.length > 0 ? "Username must be at least 2 characters." : "";
+    statusEl.className = "taken";
+    return;
+  }
+  if (!/^[a-zA-Z0-9_\- ]+$/.test(val)) {
+    statusEl.textContent = "Only letters, numbers, spaces, _ and - allowed.";
+    statusEl.className = "taken";
+    return;
+  }
+
+  statusEl.textContent = "Checking…";
+  statusEl.className = "checking";
+
+  editUsernameCheckTimer = setTimeout(async () => {
+    const available = await checkUsernameAvailable(val, deviceID);
+    if (available) {
+      statusEl.textContent = "✓ Available!";
+      statusEl.className = "available";
+      btn.disabled = false;
+    } else {
+      statusEl.textContent = "✗ Already taken.";
+      statusEl.className = "taken";
+      btn.disabled = true;
+    }
+  }, 500);
+});
 
 setTimeout(init, Math.random() * 4000 + 1000);
 
@@ -251,7 +374,16 @@ async function init(){
 
 window.createAccount = async function(){
   const name = el("nameInput").value.trim();
-  if(!name){ alert("Please enter a name."); return; }
+  if(!name){ alert("Please enter a username."); return; }
+
+  // Final availability double-check before insert
+  const available = await checkUsernameAvailable(name);
+  if (!available) {
+    el("usernameStatus").textContent = "✗ Username just got taken. Please choose another.";
+    el("usernameStatus").className = "taken";
+    el("createBtn").disabled = true;
+    return;
+  }
 
   const msgs = ["Polishing Games...","Refreshing Data...","Creating Account...","Almost Done..."];
   let i = 0;
@@ -302,6 +434,11 @@ function showMain(){
   el("accountBtn").textContent = isGuest() ? "Create Account" : "Account";
   setInterval(() => { el("time").textContent = new Date().toLocaleString(); }, 1000);
   loadWeather();
+
+  // Load friends panel for logged-in non-guest users
+  if (!isGuest()) {
+    import("/dd-games/assets/friends-panel.js").catch(e => console.warn("Friends panel:", e));
+  }
 }
 
 async function loadWeather(){
@@ -328,11 +465,22 @@ window.openAccount = function(){
   el("ipSpan").textContent = ipAddr;
   el("editName").value = userRow.Name;
   el("editName").placeholder = userRow.Name;
+  el("editUsernameStatus").textContent = "";
+  el("saveNameBtn").disabled = false;
 }
 
 window.saveName = async function(){
   const newName = el("editName").value.trim();
   if(!newName) return;
+
+  // Final check
+  const available = await checkUsernameAvailable(newName, deviceID);
+  if (!available) {
+    el("editUsernameStatus").textContent = "✗ Username already taken.";
+    el("editUsernameStatus").className = "taken";
+    return;
+  }
+
   await supabase.from("users").update({ Name: newName }).eq("user_id", deviceID);
   userRow.Name = newName;
   showMain();
