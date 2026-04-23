@@ -437,8 +437,12 @@ function showMain(){
 
   // Load friends panel for logged-in non-guest users
   if (!isGuest()) {
-    import("/dd-games/assets/friends-panel.js").catch(e => console.warn("Friends panel:", e));
-  }
+  // Wait for the DOM to be interactive before importing
+  window.addEventListener('DOMContentLoaded', () => {
+    import("/dd-games/assets/friends-panel.js")
+      .catch(e => console.warn("Friends panel load failed:", e));
+  });
+}
 }
 
 async function loadWeather(){
