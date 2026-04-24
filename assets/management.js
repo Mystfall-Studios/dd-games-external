@@ -7,17 +7,16 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const PREMIUM_PAGE_URL = "/dd-games/assets/premium-info.html";
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
 
-// ── Device ID ────────────────────────────────────────────
-function getOrCreateDeviceID(){
+function getOrCreateDeviceID() {
   let id = localStorage.getItem("device_id");
-  if(!id){
+  if (!id) {
     id = crypto.randomUUID();
     localStorage.setItem("device_id", id);
   }
   return id;
 }
 
-function getDeviceInfo(){
+function getDeviceInfo() {
   return {
     browser: navigator.userAgent,
     os: navigator.platform,
@@ -26,108 +25,140 @@ function getDeviceInfo(){
   };
 }
 
-// ── Premium page detection ───────────────────────────────
-function pageIsPremium(){
+function pageIsPremium() {
   return document.body.dataset.premium === "true";
 }
 
-const deviceID = getOrCreateDeviceID();
-const info = getDeviceInfo();
+async function init() {
+  const deviceID = getOrCreateDeviceID();
+  const info = getDeviceInfo();
 
-// ── Guest mode ───────────────────────────────────────────
-if(deviceID === GUEST_ID){
-  if(pageIsPremium()){
-    window.location.href = PREMIUM_PAGE_URL;
-    throw new Error("Guests cannot access premium pages");
-  }
-  throw new Error("Guest mode — skipping management");
-}
-
-// ── IP ───────────────────────────────────────────────────
-const ipRes = await fetch("https://api.ipify.org?format=json");
-const ip = (await ipRes.json()).ip;
-
-// ── Lookup user ──────────────────────────────────────────
-const { data: existingUser, error: lookupError } = await supabase
-  .from("users").select("*")
-  .eq("user_id", deviceID).maybeSingle();
-
-if(lookupError) console.error("Lookup error:", lookupError);
-
-// ── New user ─────────────────────────────────────────────
-if(!existingUser){
-  await supabase.from("users").insert({
-    user_id: deviceID,
-    ip,
-    browser: info.browser,
-    os: info.os,
-    device: info.device,
-    page: info.page,
-    last_seen: new Date(),
-    visit_count: 1,
-    blocked: false,
-    Name: "",
-    Playtime: 0,
-    Access: true,
-    premium: true
-  });
-
-} else {
-
-  // ── Blocked check ──────────────────────────────────────
-  if(existingUser.blocked){
-    document.body.innerHTML = "<h1>Access denied.</h1>";
-    throw new Error("Blocked");
-  }
-
-  // ── Premium page check ─────────────────────────────────
-  if(pageIsPremium() && existingUser.premium !== true){
-    window.location.href = PREMIUM_PAGE_URL;
-    throw new Error("Premium required");
-  }
-
-  // ── Name check — redirect to setup if missing ──────────
-  if(!existingUser.Name || existingUser.Name.trim() === ""){
-    if(!location.pathname.endsWith("main.html")){
-      window.location.href = "/dd-games/main.html";
+  // ── Guest mode ─────────────────────────────────────────
+  if (deviceID === GUEST_ID) {
+    if (pageIsPremium()) {
+      window.location.href = PREMIUM_PAGE_URL;
     }
+    return; // guests skip everything below, no throw
   }
 
-  // ── Update visit info ──────────────────────────────────
-  await supabase.from("users").update({
-    ip,
-    browser: info.browser,
-    os: info.os,
-    device: info.device,
-    page: info.page,
-    last_seen: new Date(),
-    visit_count: (existingUser.visit_count || 0) + 1
-  }).eq("user_id", deviceID);
-}
+  // ── IP ─────────────────────────────────────────────────
+  let ip = "";
+  try {
+    const ipRes = await fetch("https://api.ipify.org?format=json");
+    ip = (await ipRes.json()).ip;
+  } catch (e) {
+    console.warn("IP fetch failed:", e);
+  }
 
-// ── Playtime timer (every minute) ────────────────────────
-setInterval(async () => {
-  const { data, error } = await supabase
-    .from("users")
-    .select('"Playtime", blocked, premium')
+  // ── Lookup user ────────────────────────────────────────
+  const { data: existingUser, error: lookupError } = await supabase
+    .from("users").select("*")
     .eq("user_id", deviceID).maybeSingle();
 
-  if(error){ console.error("Playtime fetch error:", error); return; }
-  if(!data) return;
+  if (lookupError) console.error("Lookup error:", lookupError);
 
-  if(data.blocked){
-    document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
-    return;
+  // ── New user ───────────────────────────────────────────
+  if (!existingUser) {
+    await supabase.from("users").insert({
+      user_id: deviceID,
+      ip,
+      browser: info.browser,
+      os: info.os,
+      device: info.device,
+      page: info.page,
+      last_seen: new Date(),
+      visit_count: 1,
+      blocked: false,
+      Name: "",
+      Playtime: 0,
+      Access: true,
+      premium: true
+    });
+
+  } else {
+
+    // ── Blocked check ────────────────────────────────────
+    if (existingUser.blocked) {
+      document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
+      return;
+    }
+
+    // ── Premium page check ───────────────────────────────
+    if (pageIsPremium() && existingUser.premium !== true) {
+      window.location.href = PREMIUM_PAGE_URL;
+      return;
+    }
+
+    // ── Name check — redirect to setup if missing ────────
+    if (!existingUser.Name || existingUser.Name.trim() === "") {
+      if (!location.pathname.endsWith("main.html")) {
+        window.location.href = "/dd-games/main.html";
+        return;
+      }
+    }
+
+    // ── Update visit info ────────────────────────────────
+    await supabase.from("users").update({
+      ip,
+      browser: info.browser,
+      os: info.os,
+      device: info.device,
+      page: info.page,
+      last_seen: new Date(),
+      visit_count: (existingUser.visit_count || 0) + 1
+    }).eq("user_id", deviceID);
   }
 
-  if(pageIsPremium() && data.premium !== true){
-    window.location.href = PREMIUM_PAGE_URL;
-    return;
+  // ── Playtime timer (every minute) ──────────────────────
+  setInterval(async () => {
+    const { data, error } = await supabase
+      .from("users")
+      .select('"Playtime", blocked, premium')
+      .eq("user_id", deviceID).maybeSingle();
+
+    if (error) { console.error("Playtime fetch error:", error); return; }
+    if (!data) return;
+
+    if (data.blocked) {
+      document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
+      return;
+    }
+
+    if (pageIsPremium() && data.premium !== true) {
+      window.location.href = PREMIUM_PAGE_URL;
+      return;
+    }
+
+    await supabase.from("users").update({
+      Playtime: (data["Playtime"] || 0) + 1,
+      last_seen: new Date()
+    }).eq("user_id", deviceID);
+
+  }, 60000);
+
+  // ── Friends panel (inject on every page) ───────────────
+  // Ably must be present — if the page didn't load it, inject it first
+  function loadFriendsPanel() {
+    import("/dd-games/assets/friends-panel.js").catch(e => {
+      console.warn("Friends panel failed to load:", e);
+    });
   }
 
-  await supabase.from("users").update({
-    Playtime: (data["Playtime"] || 0) + 1,
-    last_seen: new Date()
-  }).eq("user_id", deviceID);
+  if (typeof Ably !== "undefined") {
+    loadFriendsPanel();
+  } else {
+    // Ably not on this page yet — inject the script tag then load panel
+    const ablyScript = document.createElement("script");
+    ablyScript.src = "https://cdn.ably.io/lib/ably.min-1.js";
+    ablyScript.onload = loadFriendsPanel;
+    ablyScript.onerror = () => console.warn("Ably failed to load, friends panel skipped.");
+    document.head.appendChild(ablyScript);
+  }
+}
 
-}, 60000);
+// ── Entry point ─────────────────────────────────────────
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
