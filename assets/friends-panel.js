@@ -11,6 +11,9 @@ const ABLY_KEY     = "f4iV1g.CdzItg:DMBDb8oONqNtkeH6dq25U4DYKAfd-7GQ6uEKXuqUJVw"
 const GUEST_ID     = "00000000-0000-0000-0000-000000000000";
 
 async function init() {
+  // Prevent script from initializing multiple times inside hidden iframes
+  if (window !== window.top) return;
+
   const myID = localStorage.getItem("device_id");
   if (!myID || myID === GUEST_ID) return;
 
@@ -135,7 +138,7 @@ async function init() {
     color: var(--fp-text);
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow-x: hidden; 
+    overflow-x: hidden; /* Fix for sliding drawer bleed */
   }
   #fp-panel.open { transform: translateX(0); }
 
@@ -779,12 +782,19 @@ async function init() {
     const val = document.getElementById("fp-add-input").value.trim();
     if (!val) return;
 
-    // ── Fixed: use column name without extra quotes ──
+    // Fixed: limit(1) to avoid multiple rows crashing maybeSingle, eq instead of ilike, error handling
     const { data: target, error } = await supabase
       .from("users")
       .select("user_id, Name")
       .ilike("Name", val)
+      .limit(1)
       .maybeSingle();
+
+    if (error) {
+      console.error("Supabase Error:", error);
+      toast({ icon: "⚠️", title: "Error", body: "Could not connect to database.", color: "var(--fp-yellow)" });
+      return;
+    }
 
     if (!target) {
       toast({ icon: "❌", title: "User not found", body: `No user named "${esc(val)}"`, color: "var(--fp-red)" });
@@ -909,13 +919,14 @@ async function init() {
 
   // ── Ably ─────────────────────────────────────────────────────────────────
   function initAbly() {
+    if (typeof Ably === 'undefined') return; // Prevents crash if Ably didn't load
     ablyClient = new Ably.Realtime({ key: ABLY_KEY, clientId: myID });
     ablyClient.channels.get(`presence:${myID}`).subscribe(msg => handleAbly(msg.data));
     ablyClient.connection.once("connected", announceOnline);
   }
 
   function ablyNotify(targetID, payload) {
-    ablyClient.channels.get(`presence:${targetID}`).publish("notify", payload);
+    if (ablyClient) ablyClient.channels.get(`presence:${targetID}`).publish("notify", payload);
   }
 
   async function announceOnline() {
@@ -932,46 +943,27 @@ async function init() {
 
   function handleAbly(data) {
     if (!data?.type) return;
-    const reveal = (tab) => {
-      if (!panelOpen) openPanel();
-      switchTab(tab);
-    };
-    switch (data.type) {
-      case "friend_online":
-        presence[data.from_id] = { user_id: data.from_id, current_game: data.current_game || "Online", last_seen: new Date().toISOString() };
+    
+    // Auto-update UI based on incoming notification
+    loadNotifs().then(() => {
+        renderNotifs();
+        updateBadges();
+    });
+
+    if (data.type === "friend_request" || data.type === "friend_accepted" || data.type === "quick_message") {
+        toast(nMeta({ type: data.type, data: data }));
+        if (data.type === "friend_request") loadRequests().then(renderRequests);
+        if (data.type === "friend_accepted") loadFriends().then(renderFriends);
+    } else if (data.type === "friend_online") {
+        // Optimistically update presence instead of doing a full database fetch
+        presence[data.from_id] = { user_id: data.from_id, current_game: data.current_game, last_seen: new Date().toISOString() };
         if (panelOpen) renderFriends();
-        toast({ icon: "🟢", title: `${esc(data.name)} is online`, body: data.current_game || "Just joined DD Games", color: "var(--fp-green)", onClick: () => reveal("friends") });
-        break;
-      case "friend_request":
-        loadRequests().then(() => { renderRequests(); updateBadges(); });
-        toast({ icon: "👋", title: "Friend request!", body: `${esc(data.from_name)} wants to be friends.`, color: "var(--fp-accent)", onClick: () => reveal("requests") });
-        break;
-      case "friend_accepted":
-        loadFriends().then(() => loadPresence().then(renderFriends));
-        toast({ icon: "🤝", title: "Friend accepted!", body: `${esc(data.from_name)} accepted your request.`, color: "var(--fp-green)", onClick: () => reveal("friends") });
-        break;
-      case "quick_message":
-        loadNotifs().then(updateBadges);
-        toast({ icon: "💬", title: esc(data.from_name), body: esc(data.message), color: "var(--fp-accent2)", onClick: () => reveal("notifs") });
-        break;
     }
   }
 
-  // ── Presence heartbeat ────────────────────────────────────────────────────
-  setInterval(async () => {
-    await supabase.from("presence").upsert(
-      { user_id: myID, current_game: currentGame, last_seen: new Date().toISOString() },
-      { onConflict: "user_id" }
-    );
-  }, 90000);
-
-  // ── Boot ──────────────────────────────────────────────────────────────────
+  // Final initialization calls
   initAbly();
-  loadRequests().then(() => loadNotifs().then(updateBadges));
+  updateBadges();
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init);
-} else {
-  init();
-}
+init();
