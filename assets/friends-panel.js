@@ -52,6 +52,16 @@ async function init() {
     --fp-shadow:  0 0 40px rgba(0,0,0,0.7);
   }
 
+  /* ── CSS RESET FOR PANEL (Prevents host site styles from leaking in) ── */
+  #fp-panel, #fp-panel *, #fp-panel *::before, #fp-panel *::after {
+    box-sizing: border-box !important;
+  }
+
+  #fp-panel button, #fp-panel input {
+    min-width: 0 !important; 
+    margin: 0;               
+  }
+
   /* ── TAB (the always-visible pull tab on the left edge) ── */
   #fp-tab {
     position: fixed;
