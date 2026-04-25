@@ -11,8 +11,10 @@ const ABLY_KEY     = "f4iV1g.CdzItg:DMBDb8oONqNtkeH6dq25U4DYKAfd-7GQ6uEKXuqUJVw"
 const GUEST_ID     = "00000000-0000-0000-0000-000000000000";
 
 async function init() {
-  // Prevent script from initializing multiple times inside hidden iframes
   if (window !== window.top) return;
+
+  if (window.__FP_LOADED) return;
+  window.__FP_LOADED = true;
 
   const myID = localStorage.getItem("device_id");
   if (!myID || myID === GUEST_ID) return;
