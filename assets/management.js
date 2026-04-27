@@ -29,19 +29,45 @@ function pageIsPremium() {
   return document.body.dataset.premium === "true";
 }
 
+// ── Friends panel loader ──────────────────────────────────────────────────────
+// Only attempt to load the friends panel when we are the top-level browsing
+// context. Game pages run management.js inside iframes; importing friends-panel
+// from there throws "Stopped execution in sub-frame" intentionally, but it
+// polluted the console with a red error. We now skip the import entirely when
+// we are not the top frame, so the error never occurs.
+function loadFriendsPanel() {
+  // Guard 1: must be top-level window
+  if (window !== window.top) return;
+
+  // Guard 2: already loaded in this window — don't import twice
+  if (window.__FP_LOADED) return;
+
+  import("/dd-games/assets/friends-panel.js").catch(e => {
+    // "Already loaded" and "Stopped execution in sub-frame" are expected
+    // control-flow throws from friends-panel.js, not real errors.
+    // Swallow them silently; surface anything else as a warning.
+    const msg = e?.message || "";
+    if (
+      msg.includes("Already loaded") ||
+      msg.includes("sub-frame")
+    ) return;
+    console.warn("Friends panel failed to load:", e);
+  });
+}
+
 async function init() {
   const deviceID = getOrCreateDeviceID();
   const info = getDeviceInfo();
 
-  // ── Guest mode ─────────────────────────────────────────
+  // ── Guest mode ──────────────────────────────────────────────────────────
   if (deviceID === GUEST_ID) {
     if (pageIsPremium()) {
       window.location.href = PREMIUM_PAGE_URL;
     }
-    return; // guests skip everything below, no throw
+    return; // guests skip everything below
   }
 
-  // ── IP ─────────────────────────────────────────────────
+  // ── IP ──────────────────────────────────────────────────────────────────
   let ip = "";
   try {
     const ipRes = await fetch("https://api.ipify.org?format=json");
@@ -50,14 +76,14 @@ async function init() {
     console.warn("IP fetch failed:", e);
   }
 
-  // ── Lookup user ────────────────────────────────────────
+  // ── Lookup user ─────────────────────────────────────────────────────────
   const { data: existingUser, error: lookupError } = await supabase
     .from("users").select("*")
     .eq("user_id", deviceID).maybeSingle();
 
   if (lookupError) console.error("Lookup error:", lookupError);
 
-  // ── New user ───────────────────────────────────────────
+  // ── New user ─────────────────────────────────────────────────────────────
   if (!existingUser) {
     await supabase.from("users").insert({
       user_id: deviceID,
@@ -77,19 +103,19 @@ async function init() {
 
   } else {
 
-    // ── Blocked check ────────────────────────────────────
+    // ── Blocked check ───────────────────────────────────────────────────
     if (existingUser.blocked) {
       document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
       return;
     }
 
-    // ── Premium page check ───────────────────────────────
+    // ── Premium page check ──────────────────────────────────────────────
     if (pageIsPremium() && existingUser.premium !== true) {
       window.location.href = PREMIUM_PAGE_URL;
       return;
     }
 
-    // ── Name check — redirect to setup if missing ────────
+    // ── Name check — redirect to setup if missing ───────────────────────
     if (!existingUser.Name || existingUser.Name.trim() === "") {
       if (!location.pathname.endsWith("main.html")) {
         window.location.href = "/dd-games/main.html";
@@ -97,7 +123,7 @@ async function init() {
       }
     }
 
-    // ── Update visit info ────────────────────────────────
+    // ── Update visit info ───────────────────────────────────────────────
     await supabase.from("users").update({
       ip,
       browser: info.browser,
@@ -109,7 +135,7 @@ async function init() {
     }).eq("user_id", deviceID);
   }
 
-  // ── Playtime timer (every minute) ──────────────────────
+  // ── Playtime timer (every minute) ────────────────────────────────────────
   setInterval(async () => {
     const { data, error } = await supabase
       .from("users")
@@ -117,7 +143,7 @@ async function init() {
       .eq("user_id", deviceID).maybeSingle();
 
     if (error) { console.error("Playtime fetch error:", error); return; }
-    if (!data) return;
+    if (!data)  return;
 
     if (data.blocked) {
       document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
@@ -136,27 +162,27 @@ async function init() {
 
   }, 60000);
 
-  // ── Friends panel (inject on every page) ───────────────
-  // Ably must be present — if the page didn't load it, inject it first
-  function loadFriendsPanel() {
-    import("/dd-games/assets/friends-panel.js").catch(e => {
-      console.warn("Friends panel failed to load:", e);
-    });
+  // ── Friends panel ─────────────────────────────────────────────────────────
+  // Ably must be present on the page for the friends panel to work.
+  // If the current page already loaded Ably (via its own <script> tag),
+  // we import immediately. Otherwise we inject Ably first, then import.
+  if (window !== window.top) {
+    // We are inside an iframe (e.g. a game iframe) — skip entirely.
+    return;
   }
 
   if (typeof Ably !== "undefined") {
     loadFriendsPanel();
   } else {
-    // Ably not on this page yet — inject the script tag then load panel
     const ablyScript = document.createElement("script");
     ablyScript.src = "https://cdn.ably.io/lib/ably.min-1.js";
-    ablyScript.onload = loadFriendsPanel;
+    ablyScript.onload  = loadFriendsPanel;
     ablyScript.onerror = () => console.warn("Ably failed to load, friends panel skipped.");
     document.head.appendChild(ablyScript);
   }
 }
 
-// ── Entry point ─────────────────────────────────────────
+// ── Entry point ───────────────────────────────────────────────────────────────
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
