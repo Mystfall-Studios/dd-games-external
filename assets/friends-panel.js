@@ -968,4 +968,7 @@ async function init() {
   updateBadges();
 }
 
-init();
+waitForElement('#friends-panel-container', () => {
+    console.log("DOM ready, initializing Friends Panel...");
+    init();
+});

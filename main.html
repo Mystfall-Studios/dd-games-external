@@ -179,14 +179,6 @@ hr { border-color:#ffffff33; margin:16px 0; }
     <p id="mergeError" style="color:#f87171;margin-top:8px;display:none;"></p>
   </div>
 
-  <!-- NO ACCESS -->
-  <div id="noAccess" class="panel hidden">
-    <h1>Access Pending</h1>
-    <p>You do not currently have access. Please request it below.</p>
-    <button onclick="RequestForm()">Request Access</button>
-    <button onclick="backMain()">← Back</button>
-  </div>
-
 </div>
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script type="module">
@@ -199,7 +191,7 @@ const supabase = createClient(
 
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
 
-const PANELS = ["loading","setup","linkEntry","main","account","generateCode","noAccess","mergeWarning"];
+const PANELS = ["loading","setup","linkEntry","main","account","generateCode","mergeWarning"];
 function el(id){ return document.getElementById(id); }
 
 window.showPanel = function(id){
@@ -424,7 +416,7 @@ window.createAccount = async function(){
 
 window.continueAsGuest = function(){
   localStorage.setItem("device_id", GUEST_ID);
-  userRow = { Name:"Guest", Access:false, blocked:false, premium:false, Playtime:0 };
+  userRow = { Name:"Guest", Access:true, blocked:false, premium:false, Playtime:0 };
   showMain();
 }
 
@@ -491,10 +483,6 @@ window.backMain = function(){ showMain(); }
 window.launchSite = function(){
   if(userRow.blocked){
     alert("You've been banned from DD Games for breaking the TOS.");
-    return;
-  }
-  if(!userRow.Access){
-    showPanel("noAccess");
     return;
   }
   document.body.style.margin = "0";
