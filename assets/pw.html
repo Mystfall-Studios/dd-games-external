@@ -152,24 +152,17 @@
     fetch("/dd-games/main.html")
       .then(res => res.text())
       .then(html => {
-        // 1. Swap out the HTML cleanly
         document.documentElement.innerHTML = html;
 
-        // 2. Browsers block <script> tags loaded via innerHTML from running for security reasons.
-        // To fix this, we loop through any script tags in the new HTML, recreate them, and inject them properly.
-        Array.from(document.querySelectorAll("script")).forEach(oldScript => {
-          const newScript = document.createElement("script");
-          
-          // Copy all attributes (like src, defer, type)
-          Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-          
-          // Copy any inline code inside the script
-          if (oldScript.innerHTML) {
-            newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-          }
-          
-          // Replace the dead script with the live one so it executes
-          oldScript.parentNode.replaceChild(newScript, oldScript);
+        // Wrap script re-injection in a requestAnimationFrame 
+        // This ensures the HTML is actually rendered before the scripts run
+        requestAnimationFrame(() => {
+            Array.from(document.querySelectorAll("script")).forEach(oldScript => {
+              const newScript = document.createElement("script");
+              Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+              if (oldScript.innerHTML) newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+              oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
         });
       })
       .catch(() => alert("Failed to load main.html"));

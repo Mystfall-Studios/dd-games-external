@@ -435,7 +435,7 @@ function showMain(){
 
 async function loadWeather(){
   try {
-    const res = await fetch("https://api.codetabs.com/v1/weather");
+    const res = await fetch("https://api.codetabs.com/v1/proxy/?quest=https://api.codetabs.com/v1/weather");
     const w = await res.json();
     el("weather").textContent =
       `${w.city}, ${w.country}: ${Math.round(w.tempC)}°C (${Math.round(w.tempF)}°F)`;

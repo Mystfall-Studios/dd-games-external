@@ -4,7 +4,18 @@
  */
 
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+// --- PREVENT DOUBLE LOADING ---
+if (window !== window.top) {
+    // If we are in an iframe/hidden wrapper, stop immediately
+    throw new Error("Friends Panel: Stopped execution in sub-frame.");
+}
 
+if (window.__FP_LOADED) {
+    // If the script already ran once, don't run it again
+    console.warn("Friends Panel: Already loaded, skipping initialization.");
+    throw new Error("Friends Panel: Already loaded.");
+}
+window.__FP_LOADED = true;
 const SUPABASE_URL = "https://lqfcntoldutgkzaboqfk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d";
 const ABLY_KEY     = "f4iV1g.CdzItg:DMBDb8oONqNtkeH6dq25U4DYKAfd-7GQ6uEKXuqUJVw";
@@ -962,13 +973,62 @@ async function init() {
         if (panelOpen) renderFriends();
     }
   }
+  // --- HELPER: Wait for DOM element to exist ---
+function waitForFPElement(selector, callback) {
+    const element = document.querySelector(selector);
+    if (element) {
+        callback();
+        return;
+    }
+
+    const observer = new MutationObserver(() => {
+        if (document.querySelector(selector)) {
+            observer.disconnect();
+            callback();
+        }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// --- INITIALIZATION ---
+// We use a specific name 'waitForFPElement' to avoid conflicts with other scripts
+waitForFPElement('#friends-panel-container', () => {
+    console.log("Friends Panel container found. Initializing...");
+    // Check if init exists and hasn't run yet
+    if (typeof init === 'function' && !window.__FP_LOADED) {
+        init();
+    }
+});
 
   // Final initialization calls
   initAbly();
   updateBadges();
 }
 
-waitForElement('#friends-panel-container', () => {
-    console.log("DOM ready, initializing Friends Panel...");
-    init();
+// --- HELPER: Wait for DOM element to exist ---
+function waitForFPElement(selector, callback) {
+    const element = document.querySelector(selector);
+    if (element) {
+        callback();
+        return;
+    }
+
+    const observer = new MutationObserver(() => {
+        if (document.querySelector(selector)) {
+            observer.disconnect();
+            callback();
+        }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
+// --- INITIALIZATION ---
+console.log("Friends Panel: Waiting for container...");
+waitForFPElement('#friends-panel-container', () => {
+    console.log("Friends Panel: Container found. Initializing...");
+    if (typeof init === 'function') {
+        init();
+    }
 });
