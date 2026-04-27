@@ -993,7 +993,7 @@ function waitForFPElement(selector, callback) {
 
 // --- INITIALIZATION ---
 // We use a specific name 'waitForFPElement' to avoid conflicts with other scripts
-waitForFPElement('#friends-panel-container', () => {
+waitForFPElement('#fp-overlay', () => {
     console.log("Friends Panel container found. Initializing...");
     // Check if init exists and hasn't run yet
     if (typeof init === 'function' && !window.__FP_LOADED) {
@@ -1026,7 +1026,7 @@ function waitForFPElement(selector, callback) {
 
 // --- INITIALIZATION ---
 console.log("Friends Panel: Waiting for container...");
-waitForFPElement('#friends-panel-container', () => {
+waitForFPElement('#fp-overlay', () => {
     console.log("Friends Panel: Container found. Initializing...");
     if (typeof init === 'function') {
         init();
