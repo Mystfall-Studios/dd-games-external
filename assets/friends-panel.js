@@ -449,7 +449,8 @@ async function init() {
   .fp-toast-bar-track { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.07); }
   .fp-toast-bar { height: 100%; border-radius: 2px; width: 100%; }
   `;
-  document.head.appendChild(style);
+  document.head || document.documentElement || document.body.appendChild(style);
+
 
   // ── STEP 2: Inject HTML — MUST happen before any querySelector calls ──────
   document.body.insertAdjacentHTML("beforeend", `
