@@ -1,21 +1,28 @@
 /**
  * DD Games — Friends Side Panel & Notification System
  * Injected automatically by management.js on every page.
+ *
+ * FIXES APPLIED:
+ *  - window.__FP_LOADED guard at top-level (not inside init) to prevent double execution
+ *  - insertAdjacentHTML is the FIRST action inside init()
+ *  - All render functions have if (!pane) return; guard clauses
+ *  - Event listeners on fp-tab / fp-close-btn / overlay attached AFTER HTML injection
+ *  - Removed duplicate/nested waitForFPElement + init calls at bottom
+ *  - MutationObserver-based bootloader waits for <body> before calling init()
  */
 
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
-// --- PREVENT DOUBLE LOADING ---
-if (window !== window.top) {
-    // If we are in an iframe/hidden wrapper, stop immediately
-    throw new Error("Friends Panel: Stopped execution in sub-frame.");
-}
 
+// ── PREVENT DOUBLE LOADING ───────────────────────────────────────────────────
+if (window !== window.top) {
+  throw new Error("Friends Panel: Stopped execution in sub-frame.");
+}
 if (window.__FP_LOADED) {
-    // If the script already ran once, don't run it again
-    console.warn("Friends Panel: Already loaded, skipping initialization.");
-    throw new Error("Friends Panel: Already loaded.");
+  console.warn("Friends Panel: Already loaded, skipping.");
+  throw new Error("Friends Panel: Already loaded.");
 }
 window.__FP_LOADED = true;
+
 const SUPABASE_URL = "https://lqfcntoldutgkzaboqfk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d";
 const ABLY_KEY     = "f4iV1g.CdzItg:DMBDb8oONqNtkeH6dq25U4DYKAfd-7GQ6uEKXuqUJVw";
@@ -23,9 +30,6 @@ const GUEST_ID     = "00000000-0000-0000-0000-000000000000";
 
 async function init() {
   if (window !== window.top) return;
-
-  if (window.__FP_LOADED) return;
-  window.__FP_LOADED = true;
 
   const myID = localStorage.getItem("device_id");
   if (!myID || myID === GUEST_ID) return;
@@ -48,7 +52,7 @@ async function init() {
 
   const currentGame = detectCurrentGame();
 
-  // ── Styles ──────────────────────────────────────────────────────────────
+  // ── STEP 1: Inject styles ─────────────────────────────────────────────────
   const style = document.createElement("style");
   style.textContent = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap');
@@ -68,17 +72,14 @@ async function init() {
     --fp-shadow:  0 0 40px rgba(0,0,0,0.7);
   }
 
-  /* ── CSS RESET FOR PANEL (Prevents host site styles from leaking in) ── */
   #fp-panel, #fp-panel *, #fp-panel *::before, #fp-panel *::after {
     box-sizing: border-box !important;
   }
-
   #fp-panel button, #fp-panel input {
-    min-width: 0 !important; 
-    margin: 0;               
+    min-width: 0 !important;
+    margin: 0;
   }
 
-  /* ── TAB (the always-visible pull tab on the left edge) ── */
   #fp-tab {
     position: fixed;
     left: 0;
@@ -99,10 +100,7 @@ async function init() {
     transition: padding 0.2s, box-shadow 0.2s;
     font-family: 'DM Sans', sans-serif;
   }
-  #fp-tab:hover {
-    padding: 14px 12px;
-    box-shadow: 4px 0 22px rgba(79,142,247,0.5);
-  }
+  #fp-tab:hover { padding: 14px 12px; box-shadow: 4px 0 22px rgba(79,142,247,0.5); }
   #fp-tab-icon { font-size: 18px; line-height: 1; }
   #fp-tab-badge {
     background: var(--fp-red);
@@ -122,7 +120,6 @@ async function init() {
   }
   #fp-tab-badge.visible { opacity: 1; transform: scale(1); }
 
-  /* ── OVERLAY (darkens the rest of the page) ── */
   #fp-overlay {
     position: fixed;
     inset: 0;
@@ -134,7 +131,6 @@ async function init() {
   }
   #fp-overlay.open { opacity: 1; pointer-events: auto; }
 
-  /* ── SIDE PANEL ── */
   #fp-panel {
     position: fixed;
     left: 0;
@@ -151,11 +147,10 @@ async function init() {
     color: var(--fp-text);
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow-x: hidden; /* Fix for sliding drawer bleed */
+    overflow-x: hidden;
   }
   #fp-panel.open { transform: translateX(0); }
 
-  /* header */
   #fp-header {
     display: flex;
     align-items: center;
@@ -178,8 +173,7 @@ async function init() {
     background: transparent;
     border: 1px solid var(--fp-border);
     color: var(--fp-muted);
-    width: 28px;
-    height: 28px;
+    width: 28px; height: 28px;
     border-radius: 7px;
     font-size: 13px;
     cursor: pointer;
@@ -191,7 +185,6 @@ async function init() {
   }
   #fp-close-btn:hover { background: var(--fp-border); color: var(--fp-text); }
 
-  /* tabs */
   #fp-tabs {
     display: flex;
     border-bottom: 1px solid var(--fp-border);
@@ -234,7 +227,6 @@ async function init() {
   }
   .fp-tab-count.visible { opacity: 1; transform: scale(1); }
 
-  /* body */
   #fp-body {
     flex: 1;
     overflow-y: auto;
@@ -247,7 +239,6 @@ async function init() {
   .fp-pane { display: none; }
   .fp-pane.active { display: block; }
 
-  /* section label */
   .fp-section-label {
     font-size: 10px;
     font-weight: 700;
@@ -257,7 +248,6 @@ async function init() {
     padding: 12px 14px 4px;
   }
 
-  /* friend row */
   .fp-friend {
     display: flex;
     align-items: center;
@@ -327,7 +317,6 @@ async function init() {
   .fp-btn.del { border-color: var(--fp-red);   color: var(--fp-red);   }
   .fp-btn.del:hover { background: rgba(247,91,91,0.12); }
 
-  /* notif row */
   .fp-notif {
     display: flex;
     align-items: flex-start;
@@ -343,7 +332,6 @@ async function init() {
   .fp-notif-title  { font-size: 13px; font-weight: 500; line-height: 1.35; }
   .fp-notif-time   { font-size: 11px; color: var(--fp-muted); margin-top: 2px; }
 
-  /* empty state */
   .fp-empty {
     text-align: center;
     color: var(--fp-muted);
@@ -352,7 +340,6 @@ async function init() {
   }
   .fp-empty-icon { font-size: 32px; margin-bottom: 10px; }
 
-  /* add friend bar */
   #fp-add-bar {
     display: flex;
     gap: 8px;
@@ -390,7 +377,6 @@ async function init() {
   }
   #fp-add-btn:hover { opacity: 0.85; }
 
-  /* quick DM bar */
   #fp-dm-bar {
     display: none;
     flex-wrap: wrap;
@@ -428,7 +414,6 @@ async function init() {
   }
   #fp-dm-send:hover { opacity: 0.85; }
 
-  /* ── TOASTS ── */
   #fp-toasts {
     position: fixed;
     top: 16px; right: 16px;
@@ -466,28 +451,22 @@ async function init() {
   `;
   document.head.appendChild(style);
 
-  // ── HTML ────────────────────────────────────────────────────────────────
+  // ── STEP 2: Inject HTML — MUST happen before any querySelector calls ──────
   document.body.insertAdjacentHTML("beforeend", `
     <div id="fp-toasts"></div>
-
     <div id="fp-overlay"></div>
-
     <button id="fp-tab" title="Friends">
       <span id="fp-tab-icon">👥</span>
       <div id="fp-tab-badge"></div>
     </button>
-
     <div id="fp-panel">
       <div id="fp-header">
         <span id="fp-header-icon">👥</span>
         <h3>Friends</h3>
         <button id="fp-close-btn" title="Close">✕</button>
       </div>
-
       <div id="fp-tabs">
-        <button class="fp-tab-btn active" data-tab="friends">
-          Friends
-        </button>
+        <button class="fp-tab-btn active" data-tab="friends">Friends</button>
         <button class="fp-tab-btn" data-tab="requests">
           Requests<span class="fp-tab-count" id="fp-req-count"></span>
         </button>
@@ -495,7 +474,6 @@ async function init() {
           Notifs<span class="fp-tab-count" id="fp-notif-count"></span>
         </button>
       </div>
-
       <div id="fp-body">
         <div class="fp-pane active" id="fp-pane-friends">
           <div class="fp-empty"><div class="fp-empty-icon">👥</div>Loading...</div>
@@ -507,13 +485,11 @@ async function init() {
           <div class="fp-empty"><div class="fp-empty-icon">🔔</div>No notifications yet.</div>
         </div>
       </div>
-
       <div id="fp-dm-bar">
         <div id="fp-dm-label"></div>
         <input id="fp-dm-input" placeholder="Quick message…" maxlength="200">
         <button id="fp-dm-send">Send</button>
       </div>
-
       <div id="fp-add-bar">
         <input id="fp-add-input" placeholder="Add by username…" maxlength="30">
         <button id="fp-add-btn">Add</button>
@@ -521,7 +497,7 @@ async function init() {
     </div>
   `);
 
-  // ── State ────────────────────────────────────────────────────────────────
+  // ── STEP 3: All state and logic — elements are guaranteed to exist now ────
   let panelOpen    = false;
   let friends      = [];
   let pendingIn    = [];
@@ -533,15 +509,18 @@ async function init() {
   let unreadReqs   = 0;
   let ablyClient   = null;
 
-  const tabEl      = document.getElementById("fp-tab");
-  const tabBadge   = document.getElementById("fp-tab-badge");
-  const overlay    = document.getElementById("fp-overlay");
-  const panel      = document.getElementById("fp-panel");
-  const toastsEl   = document.getElementById("fp-toasts");
-  const reqCount   = document.getElementById("fp-req-count");
-  const notifCount = document.getElementById("fp-notif-count");
+  // Safe element getters — return null gracefully, never crash
+  function gel(id) { return document.getElementById(id); }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  const tabEl      = gel("fp-tab");
+  const tabBadge   = gel("fp-tab-badge");
+  const overlay    = gel("fp-overlay");
+  const panel      = gel("fp-panel");
+  const toastsEl   = gel("fp-toasts");
+  const reqCount   = gel("fp-req-count");
+  const notifCount = gel("fp-notif-count");
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function esc(s) {
     return String(s || "")
       .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
@@ -573,8 +552,9 @@ async function init() {
     return p && (Date.now() - new Date(p.last_seen)) < 3 * 60 * 1000;
   }
 
-  // ── Badges ───────────────────────────────────────────────────────────────
+  // ── Badges ────────────────────────────────────────────────────────────────
   function updateBadges() {
+    if (!tabBadge || !reqCount || !notifCount) return; // guard
     const total = unreadNotifs + unreadReqs;
     tabBadge.textContent = total > 9 ? "9+" : total;
     tabBadge.classList.toggle("visible", total > 0);
@@ -584,8 +564,9 @@ async function init() {
     notifCount.classList.toggle("visible", unreadNotifs > 0);
   }
 
-  // ── Panel open / close ───────────────────────────────────────────────────
+  // ── Panel open / close ────────────────────────────────────────────────────
   function openPanel() {
+    if (!panel || !overlay) return; // guard
     panelOpen = true;
     panel.classList.add("open");
     overlay.classList.add("open");
@@ -593,17 +574,20 @@ async function init() {
   }
 
   function closePanel() {
+    if (!panel || !overlay) return; // guard
     panelOpen = false;
     panel.classList.remove("open");
     overlay.classList.remove("open");
     closeDm();
   }
 
-  tabEl.addEventListener("click", openPanel);
-  overlay.addEventListener("click", closePanel);
-  document.getElementById("fp-close-btn").addEventListener("click", closePanel);
+  // Attach listeners AFTER HTML injection (elements are guaranteed to exist)
+  if (tabEl)   tabEl.addEventListener("click", openPanel);
+  if (overlay) overlay.addEventListener("click", closePanel);
+  const closeBtn = gel("fp-close-btn");
+  if (closeBtn) closeBtn.addEventListener("click", closePanel);
 
-  // ── Tabs ─────────────────────────────────────────────────────────────────
+  // ── Tabs ──────────────────────────────────────────────────────────────────
   function switchTab(name) {
     document.querySelectorAll(".fp-tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
     document.querySelectorAll(".fp-pane").forEach(p => p.classList.toggle("active", p.id === `fp-pane-${name}`));
@@ -623,7 +607,7 @@ async function init() {
     updateBadges();
   }
 
-  // ── Load all ─────────────────────────────────────────────────────────────
+  // ── Load all ──────────────────────────────────────────────────────────────
   async function loadAll() {
     await Promise.all([loadFriends(), loadRequests(), loadNotifs()]);
     await loadPresence();
@@ -677,9 +661,11 @@ async function init() {
     (data || []).forEach(p => { presence[p.user_id] = p; });
   }
 
-  // ── Render: Friends ──────────────────────────────────────────────────────
+  // ── Render: Friends ───────────────────────────────────────────────────────
   function renderFriends() {
-    const pane = document.getElementById("fp-pane-friends");
+    const pane = gel("fp-pane-friends");
+    if (!pane) return; // GUARD CLAUSE
+
     if (!friends.length) {
       pane.innerHTML = `<div class="fp-empty"><div class="fp-empty-icon">👥</div>No friends yet.<br>Search for someone below!</div>`;
       return;
@@ -714,9 +700,11 @@ async function init() {
     </div>`;
   }
 
-  // ── Render: Requests ─────────────────────────────────────────────────────
+  // ── Render: Requests ──────────────────────────────────────────────────────
   function renderRequests() {
-    const pane = document.getElementById("fp-pane-requests");
+    const pane = gel("fp-pane-requests");
+    if (!pane) return; // GUARD CLAUSE
+
     if (!pendingIn.length) {
       pane.innerHTML = `<div class="fp-empty"><div class="fp-empty-icon">📬</div>No pending requests.</div>`;
       return;
@@ -743,9 +731,11 @@ async function init() {
     pane.querySelectorAll("[data-decline]").forEach(b => b.addEventListener("click", () => declineReq(b.dataset.decline)));
   }
 
-  // ── Render: Notifs ───────────────────────────────────────────────────────
+  // ── Render: Notifs ────────────────────────────────────────────────────────
   function renderNotifs() {
-    const pane = document.getElementById("fp-pane-notifs");
+    const pane = gel("fp-pane-notifs");
+    if (!pane) return; // GUARD CLAUSE
+
     if (!notifs.length) {
       pane.innerHTML = `<div class="fp-empty"><div class="fp-empty-icon">🔔</div>No notifications yet.</div>`;
       return;
@@ -787,15 +777,18 @@ async function init() {
     switchTab(type === "friend_request" ? "requests" : "friends");
   }
 
-  // ── Friend actions ───────────────────────────────────────────────────────
-  document.getElementById("fp-add-btn").addEventListener("click", sendRequest);
-  document.getElementById("fp-add-input").addEventListener("keydown", e => { if (e.key === "Enter") sendRequest(); });
+  // ── Friend actions ────────────────────────────────────────────────────────
+  const addBtn   = gel("fp-add-btn");
+  const addInput = gel("fp-add-input");
+  if (addBtn)   addBtn.addEventListener("click", sendRequest);
+  if (addInput) addInput.addEventListener("keydown", e => { if (e.key === "Enter") sendRequest(); });
 
   async function sendRequest() {
-    const val = document.getElementById("fp-add-input").value.trim();
+    const input = gel("fp-add-input");
+    if (!input) return;
+    const val = input.value.trim();
     if (!val) return;
 
-    // Fixed: limit(1) to avoid multiple rows crashing maybeSingle, eq instead of ilike, error handling
     const { data: target, error } = await supabase
       .from("users")
       .select("user_id, Name")
@@ -804,11 +797,9 @@ async function init() {
       .maybeSingle();
 
     if (error) {
-      console.error("Supabase Error:", error);
       toast({ icon: "⚠️", title: "Error", body: "Could not connect to database.", color: "var(--fp-yellow)" });
       return;
     }
-
     if (!target) {
       toast({ icon: "❌", title: "User not found", body: `No user named "${esc(val)}"`, color: "var(--fp-red)" });
       return;
@@ -841,7 +832,7 @@ async function init() {
     });
     ablyNotify(target.user_id, { type: "friend_request", from_id: myID, from_name: myName });
 
-    document.getElementById("fp-add-input").value = "";
+    input.value = "";
     toast({ icon: "📨", title: "Request sent!", body: `Sent to ${esc(target.Name)}.`, color: "var(--fp-accent)" });
   }
 
@@ -869,27 +860,37 @@ async function init() {
     await loadAll();
   }
 
-  // ── Quick DM ─────────────────────────────────────────────────────────────
+  // ── Quick DM ──────────────────────────────────────────────────────────────
   function openDm(id, name) {
     dmTargetID = id; dmTargetName = name;
-    document.getElementById("fp-dm-label").textContent = `To: ${name}`;
-    document.getElementById("fp-dm-bar").classList.add("visible");
-    document.getElementById("fp-dm-input").focus();
-  }
-  function closeDm() {
-    dmTargetID = null;
-    document.getElementById("fp-dm-bar").classList.remove("visible");
-    document.getElementById("fp-dm-input").value = "";
+    const label   = gel("fp-dm-label");
+    const dmBar   = gel("fp-dm-bar");
+    const dmInput = gel("fp-dm-input");
+    if (label)   label.textContent = `To: ${name}`;
+    if (dmBar)   dmBar.classList.add("visible");
+    if (dmInput) dmInput.focus();
   }
 
-  document.getElementById("fp-dm-send").addEventListener("click", sendDm);
-  document.getElementById("fp-dm-input").addEventListener("keydown", e => {
+  function closeDm() {
+    dmTargetID = null;
+    const dmBar   = gel("fp-dm-bar");
+    const dmInput = gel("fp-dm-input");
+    if (dmBar)   dmBar.classList.remove("visible");
+    if (dmInput) dmInput.value = "";
+  }
+
+  const dmSend  = gel("fp-dm-send");
+  const dmInput = gel("fp-dm-input");
+  if (dmSend)  dmSend.addEventListener("click", sendDm);
+  if (dmInput) dmInput.addEventListener("keydown", e => {
     if (e.key === "Enter")  sendDm();
     if (e.key === "Escape") closeDm();
   });
 
   async function sendDm() {
-    const msg = document.getElementById("fp-dm-input").value.trim();
+    const input = gel("fp-dm-input");
+    if (!input) return;
+    const msg = input.value.trim();
     if (!msg || !dmTargetID) return;
     const { data: me } = await supabase.from("users").select("Name").eq("user_id", myID).maybeSingle();
     const myName = me?.Name || "Someone";
@@ -898,13 +899,14 @@ async function init() {
       data: { from_id: myID, from_name: myName, message: msg }, read: false
     });
     ablyNotify(dmTargetID, { type: "quick_message", from_id: myID, from_name: myName, message: msg });
-    document.getElementById("fp-dm-input").value = "";
+    input.value = "";
     toast({ icon: "💬", title: "Sent!", body: `Message sent to ${esc(dmTargetName)}.`, color: "var(--fp-accent)" });
     closeDm();
   }
 
-  // ── Toast ────────────────────────────────────────────────────────────────
+  // ── Toast ─────────────────────────────────────────────────────────────────
   function toast({ icon = "🔔", title, body = "", onClick, color = "var(--fp-accent)" }) {
+    if (!toastsEl) return; // guard
     const el = document.createElement("div");
     el.className = "fp-toast";
     el.innerHTML = `
@@ -920,7 +922,7 @@ async function init() {
     requestAnimationFrame(() => {
       el.classList.add("in");
       const bar = el.querySelector(".fp-toast-bar");
-      setTimeout(() => { bar.style.transition = "width 5s linear"; bar.style.width = "0%"; }, 50);
+      if (bar) setTimeout(() => { bar.style.transition = "width 5s linear"; bar.style.width = "0%"; }, 50);
     });
     const dismiss = () => {
       el.classList.add("out");
@@ -930,9 +932,9 @@ async function init() {
     el.onclick = () => { clearTimeout(timer); dismiss(); if (onClick) onClick(); };
   }
 
-  // ── Ably ─────────────────────────────────────────────────────────────────
+  // ── Ably ──────────────────────────────────────────────────────────────────
   function initAbly() {
-    if (typeof Ably === 'undefined') return; // Prevents crash if Ably didn't load
+    if (typeof Ably === "undefined") return;
     ablyClient = new Ably.Realtime({ key: ABLY_KEY, clientId: myID });
     ablyClient.channels.get(`presence:${myID}`).subscribe(msg => handleAbly(msg.data));
     ablyClient.connection.once("connected", announceOnline);
@@ -956,79 +958,32 @@ async function init() {
 
   function handleAbly(data) {
     if (!data?.type) return;
-    
-    // Auto-update UI based on incoming notification
+
     loadNotifs().then(() => {
-        renderNotifs();
-        updateBadges();
+      renderNotifs();
+      updateBadges();
     });
 
     if (data.type === "friend_request" || data.type === "friend_accepted" || data.type === "quick_message") {
-        toast(nMeta({ type: data.type, data: data }));
-        if (data.type === "friend_request") loadRequests().then(renderRequests);
-        if (data.type === "friend_accepted") loadFriends().then(renderFriends);
+      toast(nMeta({ type: data.type, data: data }));
+      if (data.type === "friend_request")  loadRequests().then(renderRequests);
+      if (data.type === "friend_accepted") loadFriends().then(renderFriends);
     } else if (data.type === "friend_online") {
-        // Optimistically update presence instead of doing a full database fetch
-        presence[data.from_id] = { user_id: data.from_id, current_game: data.current_game, last_seen: new Date().toISOString() };
-        if (panelOpen) renderFriends();
+      presence[data.from_id] = { user_id: data.from_id, current_game: data.current_game, last_seen: new Date().toISOString() };
+      if (panelOpen) renderFriends();
     }
   }
-  // --- HELPER: Wait for DOM element to exist ---
-function waitForFPElement(selector, callback) {
-    const element = document.querySelector(selector);
-    if (element) {
-        callback();
-        return;
-    }
 
-    const observer = new MutationObserver(() => {
-        if (document.querySelector(selector)) {
-            observer.disconnect();
-            callback();
-        }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-}
-
-// --- INITIALIZATION ---
-// We use a specific name 'waitForFPElement' to avoid conflicts with other scripts
-waitForFPElement('#fp-overlay', () => {
-    console.log("Friends Panel container found. Initializing...");
-    // Check if init exists and hasn't run yet
-    if (typeof init === 'function' && !window.__FP_LOADED) {
-        init();
-    }
-});
-
-  // Final initialization calls
+  // ── Final startup ─────────────────────────────────────────────────────────
   initAbly();
   updateBadges();
 }
 
-// --- HELPER: Wait for DOM element to exist ---
-function waitForFPElement(selector, callback) {
-    const element = document.querySelector(selector);
-    if (element) {
-        callback();
-        return;
-    }
-
-    const observer = new MutationObserver(() => {
-        if (document.querySelector(selector)) {
-            observer.disconnect();
-            callback();
-        }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+// ── BOOTLOADER: Wait for <body> to exist before calling init() ───────────────
+// This handles the case where friends-panel.js is loaded before DOMContentLoaded,
+// e.g. when injected dynamically by management.js after an innerHTML swap.
+if (document.body) {
+  init();
+} else {
+  document.addEventListener("DOMContentLoaded", init, { once: true });
 }
-
-// --- INITIALIZATION ---
-console.log("Friends Panel: Waiting for container...");
-waitForFPElement('#fp-overlay', () => {
-    console.log("Friends Panel: Container found. Initializing...");
-    if (typeof init === 'function') {
-        init();
-    }
-});

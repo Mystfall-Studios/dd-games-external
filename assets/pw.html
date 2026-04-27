@@ -146,29 +146,46 @@
   const TOS_KEY = "tosAccepted";
   const ACCESS_TOKEN_KEY = "ddAccessToken";
 
-  // ── Load main page ──────────────────────────────────────
- // ── Load main page ──────────────────────────────────────
+  // ── Load main page ────────────────────────────────────────────────────────
+  // FIX: requestAnimationFrame wraps the script re-injection loop.
+  //      This gives the browser one full render frame to "paint" the new HTML
+  //      before any JavaScript tries to query elements within it.
+  //      Without this, scripts run before the DOM is stable and crash on
+  //      getElementById calls that return null.
   function loadListPage() {
     fetch("/dd-games/main.html")
       .then(res => res.text())
       .then(html => {
+        // Reset the __FP_LOADED flag so the friends panel can re-init
+        // if the user navigates back to main.html via pw.html injection.
+        if (typeof window !== "undefined") window.__FP_LOADED = false;
+
         document.documentElement.innerHTML = html;
 
-        // Wrap script re-injection in a requestAnimationFrame 
-        // This ensures the HTML is actually rendered before the scripts run
+        // requestAnimationFrame: waits for browser to finish one render frame
+        // (i.e. the HTML above is fully parsed + painted) before firing scripts.
         requestAnimationFrame(() => {
+          // Second rAF for extra safety on slower devices / large DOMs
+          requestAnimationFrame(() => {
             Array.from(document.querySelectorAll("script")).forEach(oldScript => {
               const newScript = document.createElement("script");
-              Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-              if (oldScript.innerHTML) newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-              oldScript.parentNode.replaceChild(newScript, oldScript);
+              Array.from(oldScript.attributes).forEach(attr =>
+                newScript.setAttribute(attr.name, attr.value)
+              );
+              if (oldScript.innerHTML) {
+                newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+              }
+              if (oldScript.parentNode) {
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+              }
             });
+          });
         });
       })
       .catch(() => alert("Failed to load main.html"));
   }
 
-  // ── TOS ─────────────────────────────────────────────────
+  // ── TOS ───────────────────────────────────────────────────────────────────
   function showTOS() {
     fetch("/dd-games/TOS.md")
       .then(res => res.text())
@@ -192,7 +209,7 @@
     document.body.innerHTML = "<h1>Access denied</h1>";
   }
 
-  // ── Firebase alt log ────────────────────────────────────
+  // ── Firebase alt log ───────────────────────────────────────────────────────
   async function logAltPassword() {
     const res = await fetch("https://api.ipify.org?format=json");
     const { ip } = await res.json();
@@ -201,29 +218,28 @@
     db.ref("altCount").transaction(n => (n || 0) + 1);
   }
 
-  // ── Password check (server-side) ────────────────────────
+  // ── Password check (server-side) ───────────────────────────────────────────
   async function checkPassword() {
     const input = document.getElementById("passwordInput").value.trim();
     const error = document.getElementById("error");
-    const btn = document.getElementById("continueBtn");
+    const btn   = document.getElementById("continueBtn");
 
     error.style.display = "none";
-    if(!input) return;
+    if (!input) return;
 
-    // Disable button while waiting so it can't be spammed
     btn.disabled = true;
     btn.textContent = "Checking...";
 
     let data;
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/check-password`, {
-      method: "POST",
-      headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d"
-      },
-     body: JSON.stringify({ password: input })
-    });
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d"
+        },
+        body: JSON.stringify({ password: input })
+      });
       data = await res.json();
     } catch(e) {
       error.textContent = "Connection error. Please try again.";
@@ -233,7 +249,7 @@
       return;
     }
 
-    if(!data.success) {
+    if (!data.success) {
       error.textContent = "Password Incorrect";
       error.style.display = "block";
       btn.disabled = false;
@@ -241,13 +257,11 @@
       return;
     }
 
-    // Store the signed server token — not the password
     localStorage.setItem(ACCESS_TOKEN_KEY, data.token);
 
-    // Log if alt password was used
-    if(data.alt) await logAltPassword();
+    if (data.alt) await logAltPassword();
 
-    if(localStorage.getItem(TOS_KEY) === "true") {
+    if (localStorage.getItem(TOS_KEY) === "true") {
       loadListPage();
     } else {
       showTOS();
@@ -255,7 +269,7 @@
   }
 
   document.getElementById("passwordInput").addEventListener("keypress", e => {
-    if(e.key === "Enter") checkPassword();
+    if (e.key === "Enter") checkPassword();
   });
 </script>
 

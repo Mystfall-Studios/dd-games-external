@@ -66,7 +66,6 @@ button.danger { background:#c0392b; }
 .code-hint { font-size:13px; color:#aaa; margin-top:6px; }
 hr { border-color:#ffffff33; margin:16px 0; }
 
-/* username availability indicator */
 #usernameStatus {
   font-size:13px;
   margin-top:4px;
@@ -77,7 +76,6 @@ hr { border-color:#ffffff33; margin:16px 0; }
 #usernameStatus.taken     { color:#f87171; }
 #usernameStatus.checking  { color:#94a3b8; }
 
-/* edit username status */
 #editUsernameStatus {
   font-size:13px;
   margin-top:4px;
@@ -192,11 +190,23 @@ const supabase = createClient(
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
 
 const PANELS = ["loading","setup","linkEntry","main","account","generateCode","mergeWarning"];
+
+// Safe element getter — never throws on null
 function el(id){ return document.getElementById(id); }
 
+// Safe text setter — no-ops if element doesn't exist yet
+function setText(id, val){
+  const node = el(id);
+  if (node) node.textContent = val;
+}
+
 window.showPanel = function(id){
-  PANELS.forEach(p => el(p).classList.add("hidden"));
-  el(id).classList.remove("hidden");
+  PANELS.forEach(p => {
+    const node = el(p);
+    if (node) node.classList.add("hidden");
+  });
+  const target = el(id);
+  if (target) target.classList.remove("hidden");
 }
 
 function isGuest(){ return localStorage.getItem("device_id") === GUEST_ID; }
@@ -221,7 +231,7 @@ const info = getInfo();
 let userRow = null;
 let ipAddr = "";
 
-// ── Username availability check ──────────────────────────────────────────
+// ── Username availability check ──────────────────────────────────────────────
 let usernameCheckTimer = null;
 
 async function checkUsernameAvailable(username, excludeID = null) {
@@ -232,93 +242,88 @@ async function checkUsernameAvailable(username, excludeID = null) {
     .ilike('"Name"', username.trim());
   if (excludeID) query = query.neq("user_id", excludeID);
   const { data } = await query;
-  return !data || data.length === 0; // true = available
+  return !data || data.length === 0;
 }
 
 // Setup form username watcher
-el("nameInput").addEventListener("input", () => {
-  const val = el("nameInput").value.trim();
-  const statusEl = el("usernameStatus");
-  const btn = el("createBtn");
+const nameInput = el("nameInput");
+if (nameInput) {
+  nameInput.addEventListener("input", () => {
+    const val = nameInput.value.trim();
+    const statusEl = el("usernameStatus");
+    const btn = el("createBtn");
 
-  clearTimeout(usernameCheckTimer);
-  btn.disabled = true;
+    clearTimeout(usernameCheckTimer);
+    if (btn) btn.disabled = true;
 
-  if (val.length < 2) {
-    statusEl.textContent = val.length > 0 ? "Username must be at least 2 characters." : "";
-    statusEl.className = "taken";
-    return;
-  }
-  if (val.length > 20) {
-    statusEl.textContent = "Username too long (max 20 characters).";
-    statusEl.className = "taken";
-    return;
-  }
-  if (!/^[a-zA-Z0-9_\- ]+$/.test(val)) {
-    statusEl.textContent = "Only letters, numbers, spaces, _ and - allowed.";
-    statusEl.className = "taken";
-    return;
-  }
-
-  statusEl.textContent = "Checking…";
-  statusEl.className = "checking";
-
-  usernameCheckTimer = setTimeout(async () => {
-    const available = await checkUsernameAvailable(val);
-    if (available) {
-      statusEl.textContent = "✓ Username available!";
-      statusEl.className = "available";
-      btn.disabled = false;
-    } else {
-      statusEl.textContent = "✗ Username already taken.";
-      statusEl.className = "taken";
-      btn.disabled = true;
+    if (val.length < 2) {
+      if (statusEl) { statusEl.textContent = val.length > 0 ? "Username must be at least 2 characters." : ""; statusEl.className = "taken"; }
+      return;
     }
-  }, 500);
-});
+    if (val.length > 20) {
+      if (statusEl) { statusEl.textContent = "Username too long (max 20 characters)."; statusEl.className = "taken"; }
+      return;
+    }
+    if (!/^[a-zA-Z0-9_\- ]+$/.test(val)) {
+      if (statusEl) { statusEl.textContent = "Only letters, numbers, spaces, _ and - allowed."; statusEl.className = "taken"; }
+      return;
+    }
+
+    if (statusEl) { statusEl.textContent = "Checking…"; statusEl.className = "checking"; }
+
+    usernameCheckTimer = setTimeout(async () => {
+      const available = await checkUsernameAvailable(val);
+      if (available) {
+        if (statusEl) { statusEl.textContent = "✓ Username available!"; statusEl.className = "available"; }
+        if (btn) btn.disabled = false;
+      } else {
+        if (statusEl) { statusEl.textContent = "✗ Username already taken."; statusEl.className = "taken"; }
+        if (btn) btn.disabled = true;
+      }
+    }, 500);
+  });
+}
 
 // Edit username watcher
 let editUsernameCheckTimer = null;
-el("editName").addEventListener("input", () => {
-  const val = el("editName").value.trim();
-  const statusEl = el("editUsernameStatus");
-  const btn = el("saveNameBtn");
+const editNameInput = el("editName");
+if (editNameInput) {
+  editNameInput.addEventListener("input", () => {
+    const val = editNameInput.value.trim();
+    const statusEl = el("editUsernameStatus");
+    const btn = el("saveNameBtn");
 
-  clearTimeout(editUsernameCheckTimer);
-  btn.disabled = true;
+    clearTimeout(editUsernameCheckTimer);
+    if (btn) btn.disabled = true;
 
-  if (val === (userRow?.Name || "")) {
-    statusEl.textContent = "";
-    btn.disabled = false;
-    return;
-  }
-  if (val.length < 2) {
-    statusEl.textContent = val.length > 0 ? "Username must be at least 2 characters." : "";
-    statusEl.className = "taken";
-    return;
-  }
-  if (!/^[a-zA-Z0-9_\- ]+$/.test(val)) {
-    statusEl.textContent = "Only letters, numbers, spaces, _ and - allowed.";
-    statusEl.className = "taken";
-    return;
-  }
-
-  statusEl.textContent = "Checking…";
-  statusEl.className = "checking";
-
-  editUsernameCheckTimer = setTimeout(async () => {
-    const available = await checkUsernameAvailable(val, deviceID);
-    if (available) {
-      statusEl.textContent = "✓ Available!";
-      statusEl.className = "available";
-      btn.disabled = false;
-    } else {
-      statusEl.textContent = "✗ Already taken.";
-      statusEl.className = "taken";
-      btn.disabled = true;
+    if (val === (userRow?.Name || "")) {
+      if (statusEl) statusEl.textContent = "";
+      if (btn) btn.disabled = false;
+      return;
     }
-  }, 500);
-});
+    if (val.length < 2) {
+      if (statusEl) { statusEl.textContent = val.length > 0 ? "Username must be at least 2 characters." : ""; statusEl.className = "taken"; }
+      return;
+    }
+    if (!/^[a-zA-Z0-9_\- ]+$/.test(val)) {
+      if (statusEl) { statusEl.textContent = "Only letters, numbers, spaces, _ and - allowed."; statusEl.className = "taken"; }
+      return;
+    }
+
+    if (statusEl) { statusEl.textContent = "Checking…"; statusEl.className = "checking"; }
+
+    editUsernameCheckTimer = setTimeout(async () => {
+      const available = await checkUsernameAvailable(val, deviceID);
+      if (available) {
+        if (statusEl) { statusEl.textContent = "✓ Available!"; statusEl.className = "available"; }
+        if (btn) btn.disabled = false;
+      } else {
+        if (statusEl) { statusEl.textContent = "✗ Already taken."; statusEl.className = "taken"; }
+        if (btn) btn.disabled = true;
+      }
+    }, 500);
+  });
+}
 
 setTimeout(init, Math.random() * 4000 + 1000);
 
@@ -365,22 +370,26 @@ async function init(){
 }
 
 window.createAccount = async function(){
-  const name = el("nameInput").value.trim();
+  const nameEl = el("nameInput");
+  const name = nameEl ? nameEl.value.trim() : "";
   if(!name){ alert("Please enter a username."); return; }
 
-  // Final availability double-check before insert
   const available = await checkUsernameAvailable(name);
   if (!available) {
-    el("usernameStatus").textContent = "✗ Username just got taken. Please choose another.";
-    el("usernameStatus").className = "taken";
-    el("createBtn").disabled = true;
+    const statusEl = el("usernameStatus");
+    if (statusEl) { statusEl.textContent = "✗ Username just got taken. Please choose another."; statusEl.className = "taken"; }
+    const btn = el("createBtn");
+    if (btn) btn.disabled = true;
     return;
   }
 
   const msgs = ["Polishing Games...","Refreshing Data...","Creating Account...","Almost Done..."];
   let i = 0;
   showPanel("loading");
-  const t = setInterval(() => { el("loaderText").textContent = msgs[i++ % msgs.length]; }, 800);
+  const t = setInterval(() => {
+    const loaderEl = el("loaderText");
+    if (loaderEl) loaderEl.textContent = msgs[i++ % msgs.length];
+  }, 800);
   await new Promise(r => setTimeout(r, 3000));
   clearInterval(t);
 
@@ -420,14 +429,27 @@ window.continueAsGuest = function(){
   showMain();
 }
 
+// Clock interval — stored so it can be cleared if showMain is ever called again
+let clockInterval = null;
+
 function showMain(){
   showPanel("main");
-  el("welcome").textContent = "Welcome, " + userRow.Name;
-  el("accountBtn").textContent = isGuest() ? "Create Account" : "Account";
-  setInterval(() => { el("time").textContent = new Date().toLocaleString(); }, 1000);
+
+  // Guard: elements must exist before we touch them
+  const welcomeEl   = el("welcome");
+  const accountBtnEl = el("accountBtn");
+  if (welcomeEl)    welcomeEl.textContent = "Welcome, " + (userRow?.Name || "");
+  if (accountBtnEl) accountBtnEl.textContent = isGuest() ? "Create Account" : "Account";
+
+  // Clear any previous clock interval before starting a new one
+  if (clockInterval) clearInterval(clockInterval);
+  clockInterval = setInterval(() => {
+    const timeEl = el("time");
+    if (timeEl) timeEl.textContent = new Date().toLocaleString();
+  }, 1000);
+
   loadWeather();
 
-  // Load friends panel for logged-in non-guest users
   if (!isGuest()) {
     import("/dd-games/assets/friends-panel.js").catch(e => console.warn("Friends panel:", e));
   }
@@ -437,7 +459,8 @@ async function loadWeather(){
   try {
     const res = await fetch("https://api.codetabs.com/v1/proxy/?quest=https://api.codetabs.com/v1/weather");
     const w = await res.json();
-    el("weather").textContent =
+    const weatherEl = el("weather");
+    if (weatherEl) weatherEl.textContent =
       `${w.city}, ${w.country}: ${Math.round(w.tempC)}°C (${Math.round(w.tempF)}°F)`;
   } catch(e){}
 }
@@ -450,26 +473,31 @@ window.openAccount = function(){
     return;
   }
   showPanel("account");
-  el("uid").textContent = deviceID;
-  el("deviceSpan").textContent = info.device;
-  el("osSpan").textContent = info.os;
-  el("browserSpan").textContent = info.browser;
-  el("ipSpan").textContent = ipAddr;
-  el("editName").value = userRow.Name;
-  el("editName").placeholder = userRow.Name;
-  el("editUsernameStatus").textContent = "";
-  el("saveNameBtn").disabled = false;
+  setText("uid",         deviceID);
+  setText("deviceSpan",  info.device);
+  setText("osSpan",      info.os);
+  setText("browserSpan", info.browser);
+  setText("ipSpan",      ipAddr);
+
+  const editNameEl = el("editName");
+  if (editNameEl) { editNameEl.value = userRow.Name; editNameEl.placeholder = userRow.Name; }
+
+  const editStatus = el("editUsernameStatus");
+  if (editStatus) editStatus.textContent = "";
+
+  const saveBtnEl = el("saveNameBtn");
+  if (saveBtnEl) saveBtnEl.disabled = false;
 }
 
 window.saveName = async function(){
-  const newName = el("editName").value.trim();
+  const editNameEl = el("editName");
+  const newName = editNameEl ? editNameEl.value.trim() : "";
   if(!newName) return;
 
-  // Final check
   const available = await checkUsernameAvailable(newName, deviceID);
   if (!available) {
-    el("editUsernameStatus").textContent = "✗ Username already taken.";
-    el("editUsernameStatus").className = "taken";
+    const statusEl = el("editUsernameStatus");
+    if (statusEl) { statusEl.textContent = "✗ Username already taken."; statusEl.className = "taken"; }
     return;
   }
 
@@ -481,7 +509,7 @@ window.saveName = async function(){
 window.backMain = function(){ showMain(); }
 
 window.launchSite = function(){
-  if(userRow.blocked){
+  if(userRow?.blocked){
     alert("You've been banned from DD Games for breaking the TOS.");
     return;
   }
@@ -517,28 +545,34 @@ window.generateLinkCode = async function(){
     expires_at: expiresAt.toISOString()
   });
 
-  el("generatedCode").textContent = code;
+  setText("generatedCode", code);
 
   let secondsLeft = 300;
-  el("codeTimer").textContent = "Expires in 5:00";
+  setText("codeTimer", "Expires in 5:00");
 
   codeCountdownInterval = setInterval(() => {
     secondsLeft--;
     const m = Math.floor(secondsLeft / 60);
     const s = (secondsLeft % 60).toString().padStart(2, "0");
-    el("codeTimer").textContent = `Expires in ${m}:${s}`;
+    setText("codeTimer", `Expires in ${m}:${s}`);
     if(secondsLeft <= 0){
       clearInterval(codeCountdownInterval);
-      el("generatedCode").textContent = "------";
-      el("codeTimer").textContent = "Code expired. Generate a new one.";
+      setText("generatedCode", "------");
+      setText("codeTimer", "Code expired. Generate a new one.");
     }
   }, 1000);
 }
 
 window.submitLinkCode = async function(){
-  const code = el("linkCodeInput").value.trim();
+  const codeEl = el("linkCodeInput");
+  const code = codeEl ? codeEl.value.trim() : "";
   const errEl = el("linkError");
-  errEl.style.display = "none";
+
+  if (errEl) errEl.style.display = "none";
+
+  function showErr(msg){
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  }
 
   if(code.length !== 6){ showErr("Please enter a 6-digit code."); return; }
 
@@ -588,23 +622,25 @@ window.submitLinkCode = async function(){
 
   alert(`Account linked! Signing you in as ${targetUser.Name}.`);
   location.reload();
-
-  function showErr(msg){
-    errEl.textContent = msg;
-    errEl.style.display = "block";
-  }
 }
 
 window.showMergeWarning = function(){
-  el("mergeCodeInput").value = "";
-  el("mergeError").style.display = "none";
+  const mergeCodeEl = el("mergeCodeInput");
+  const mergeErrEl  = el("mergeError");
+  if (mergeCodeEl) mergeCodeEl.value = "";
+  if (mergeErrEl)  mergeErrEl.style.display = "none";
   showPanel("mergeWarning");
 }
 
 window.submitMergeCode = async function(){
-  const code = el("mergeCodeInput").value.trim();
+  const mergeCodeEl = el("mergeCodeInput");
+  const code = mergeCodeEl ? mergeCodeEl.value.trim() : "";
   const errEl = el("mergeError");
-  errEl.style.display = "none";
+  if (errEl) errEl.style.display = "none";
+
+  function showMergeErr(msg){
+    if (errEl) { errEl.textContent = msg; errEl.style.display = "block"; }
+  }
 
   if(code.length !== 6){ showMergeErr("Please enter a 6-digit code."); return; }
 
@@ -641,11 +677,6 @@ window.submitMergeCode = async function(){
 
   alert(`✅ Accounts merged! ${otherUser.Name}'s account has been absorbed into yours.\n\nPlaytime added: ${otherUser.Playtime || 0} min\nPremium: ${mergedPremium ? "Yes" : "No"}`);
   showPanel("account");
-
-  function showMergeErr(msg){
-    errEl.textContent = msg;
-    errEl.style.display = "block";
-  }
 }
 </script>
 </body>
