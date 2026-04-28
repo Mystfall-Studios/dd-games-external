@@ -36,23 +36,14 @@ function pageIsPremium() {
 // polluted the console with a red error. We now skip the import entirely when
 // we are not the top frame, so the error never occurs.
 function loadFriendsPanel() {
-  // Guard 1: must be top-level window
   if (window !== window.top) return;
-
-  // Guard 2: already loaded in this window — don't import twice
   if (window.__FP_LOADED) return;
-
-  import("/dd-games/assets/friends-panel.js").catch(e => {
-    // "Already loaded" and "Stopped execution in sub-frame" are expected
-    // control-flow throws from friends-panel.js, not real errors.
-    // Swallow them silently; surface anything else as a warning.
-    const msg = e?.message || "";
-    if (
-      msg.includes("Already loaded") ||
-      msg.includes("sub-frame")
-    ) return;
-    console.warn("Friends panel failed to load:", e);
-  });
+  // NEW: if there's no body yet, wait for it
+  if (!document.body) {
+    document.addEventListener("DOMContentLoaded", () => loadFriendsPanel());
+    return;
+  }
+  import("/dd-games/assets/friends-panel.js").catch(e => { ... });
 }
 
 async function init() {
