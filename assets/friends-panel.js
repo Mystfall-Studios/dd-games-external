@@ -1,19 +1,11 @@
 /**
  * DD Games — Friends Side Panel & Notification System
  * Injected automatically by management.js on every page.
- *
- * FIXES APPLIED:
- *  - window.__FP_LOADED guard at top-level (not inside init) to prevent double execution
- *  - insertAdjacentHTML is the FIRST action inside init()
- *  - All render functions have if (!pane) return; guard clauses
- *  - Event listeners on fp-tab / fp-close-btn / overlay attached AFTER HTML injection
- *  - Removed duplicate/nested waitForFPElement + init calls at bottom
- *  - MutationObserver-based bootloader waits for <body> before calling init()
  */
 
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
-// ── PREVENT DOUBLE LOADING ───────────────────────────────────────────────────
+// --- PREVENT DOUBLE LOADING ---
 if (window !== window.top) {
   throw new Error("Friends Panel: Stopped execution in sub-frame.");
 }
@@ -52,428 +44,556 @@ async function init() {
 
   const currentGame = detectCurrentGame();
 
-  // ── STEP 1: Inject styles ─────────────────────────────────────────────────
+  // ── Styles ── 
+  // KEY FIX: Use aggressive specificity + all: revert on the panel wrapper
+  // to isolate it from host page global button/input styles.
   const style = document.createElement("style");
   style.textContent = `
   @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap');
 
-  :root {
-    --fp-bg:      #080d1a;
-    --fp-surface: #0e1525;
-    --fp-border:  #1a2540;
-    --fp-accent:  #4f8ef7;
-    --fp-accent2: #7c6af6;
-    --fp-green:   #22d47a;
-    --fp-red:     #f75b5b;
-    --fp-yellow:  #f7c94f;
-    --fp-text:    #e4eaf8;
-    --fp-muted:   #4a5878;
-    --fp-w:       300px;
-    --fp-shadow:  0 0 40px rgba(0,0,0,0.7);
-  }
-
-  #fp-panel, #fp-panel *, #fp-panel *::before, #fp-panel *::after {
-    box-sizing: border-box !important;
-  }
-  #fp-panel button, #fp-panel input {
-    min-width: 0 !important;
-    margin: 0;
-  }
-
-  #fp-tab {
-    position: fixed;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 10001;
-    background: linear-gradient(180deg, var(--fp-accent), var(--fp-accent2));
-    color: white;
-    border: none;
-    border-radius: 0 10px 10px 0;
-    padding: 14px 8px;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    box-shadow: 3px 0 16px rgba(79,142,247,0.35);
-    transition: padding 0.2s, box-shadow 0.2s;
-    font-family: 'DM Sans', sans-serif;
-  }
-  #fp-tab:hover { padding: 14px 12px; box-shadow: 4px 0 22px rgba(79,142,247,0.5); }
-  #fp-tab-icon { font-size: 18px; line-height: 1; }
-  #fp-tab-badge {
-    background: var(--fp-red);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-    min-width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 3px;
-    opacity: 0;
-    transform: scale(0.5);
-    transition: opacity 0.2s, transform 0.2s;
-  }
-  #fp-tab-badge.visible { opacity: 1; transform: scale(1); }
-
-  #fp-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.45);
-    z-index: 10002;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-  }
-  #fp-overlay.open { opacity: 1; pointer-events: auto; }
-
-  #fp-panel {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: var(--fp-w);
-    background: var(--fp-bg);
-    border-right: 1px solid var(--fp-border);
-    box-shadow: var(--fp-shadow);
-    z-index: 10003;
-    display: flex;
-    flex-direction: column;
-    font-family: 'DM Sans', sans-serif;
-    color: var(--fp-text);
-    transform: translateX(-100%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow-x: hidden;
-  }
-  #fp-panel.open { transform: translateX(0); }
-
-  #fp-header {
-    display: flex;
-    align-items: center;
-    padding: 16px 14px 12px;
-    border-bottom: 1px solid var(--fp-border);
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--fp-surface);
-  }
-  #fp-header-icon { font-size: 20px; }
-  #fp-header h3 {
-    font-family: 'Syne', sans-serif;
-    font-size: 16px;
-    font-weight: 700;
-    margin: 0;
-    flex: 1;
-    letter-spacing: 0.02em;
-  }
-  #fp-close-btn {
-    background: transparent;
-    border: 1px solid var(--fp-border);
-    color: var(--fp-muted);
-    width: 28px; height: 28px;
-    border-radius: 7px;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
-    flex-shrink: 0;
-  }
-  #fp-close-btn:hover { background: var(--fp-border); color: var(--fp-text); }
-
-  #fp-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--fp-border);
-    flex-shrink: 0;
-  }
-  .fp-tab-btn {
-    flex: 1;
-    padding: 10px 0;
-    text-align: center;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--fp-muted);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-    position: relative;
-  }
-  .fp-tab-btn.active { color: var(--fp-accent); border-bottom-color: var(--fp-accent); }
-  .fp-tab-btn:hover:not(.active) { color: var(--fp-text); }
-  .fp-tab-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--fp-red);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-    min-width: 15px;
-    height: 15px;
-    border-radius: 8px;
-    padding: 0 3px;
-    margin-left: 4px;
-    vertical-align: middle;
-    opacity: 0;
-    transform: scale(0.5);
-    transition: opacity 0.2s, transform 0.2s;
-  }
-  .fp-tab-count.visible { opacity: 1; transform: scale(1); }
-
-  #fp-body {
-    flex: 1;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--fp-border) transparent;
-  }
-  #fp-body::-webkit-scrollbar { width: 4px; }
-  #fp-body::-webkit-scrollbar-thumb { background: var(--fp-border); border-radius: 2px; }
-
-  .fp-pane { display: none; }
-  .fp-pane.active { display: block; }
-
-  .fp-section-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--fp-muted);
-    padding: 12px 14px 4px;
-  }
-
-  .fp-friend {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 14px;
-    transition: background 0.15s;
-  }
-  .fp-friend:hover { background: var(--fp-surface); }
-  .fp-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Syne', sans-serif;
-    font-size: 15px;
-    font-weight: 700;
-    color: white;
-    flex-shrink: 0;
-    position: relative;
-  }
-  .fp-dot {
-    position: absolute;
-    bottom: -2px; right: -2px;
-    width: 11px; height: 11px;
-    border-radius: 50%;
-    border: 2px solid var(--fp-bg);
-  }
-  .fp-dot.online  { background: var(--fp-green); }
-  .fp-dot.offline { background: var(--fp-muted); }
-  .fp-friend-info { flex: 1; min-width: 0; }
-  .fp-friend-name {
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .fp-friend-sub {
-    font-size: 11px;
-    color: var(--fp-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-top: 1px;
-  }
-  .fp-friend-sub.online { color: var(--fp-green); }
-  .fp-actions { display: flex; gap: 5px; }
-  .fp-btn {
-    background: var(--fp-surface);
-    border: 1px solid var(--fp-border);
-    color: var(--fp-text);
-    width: 28px; height: 28px;
-    border-radius: 8px;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, border-color 0.15s;
-    flex-shrink: 0;
-  }
-  .fp-btn:hover { background: var(--fp-border); }
-  .fp-btn.ok  { border-color: var(--fp-green); color: var(--fp-green); }
-  .fp-btn.ok:hover  { background: rgba(34,212,122,0.12); }
-  .fp-btn.del { border-color: var(--fp-red);   color: var(--fp-red);   }
-  .fp-btn.del:hover { background: rgba(247,91,91,0.12); }
-
-  .fp-notif {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 14px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .fp-notif:hover  { background: var(--fp-surface); }
-  .fp-notif.unread { background: rgba(79,142,247,0.07); }
-  .fp-notif-icon   { font-size: 18px; flex-shrink: 0; padding-top: 1px; }
-  .fp-notif-body   { flex: 1; }
-  .fp-notif-title  { font-size: 13px; font-weight: 500; line-height: 1.35; }
-  .fp-notif-time   { font-size: 11px; color: var(--fp-muted); margin-top: 2px; }
-
-  .fp-empty {
-    text-align: center;
-    color: var(--fp-muted);
-    font-size: 13px;
-    padding: 36px 20px;
-  }
-  .fp-empty-icon { font-size: 32px; margin-bottom: 10px; }
-
-  #fp-add-bar {
-    display: flex;
-    gap: 8px;
-    padding: 12px 14px;
-    border-top: 1px solid var(--fp-border);
-    flex-shrink: 0;
-    background: var(--fp-surface);
-  }
-  #fp-add-input {
-    flex: 1;
-    background: var(--fp-bg);
-    border: 1px solid var(--fp-border);
-    color: var(--fp-text);
-    padding: 8px 11px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  #fp-add-input:focus { border-color: var(--fp-accent); }
-  #fp-add-input::placeholder { color: var(--fp-muted); }
-  #fp-add-btn {
-    background: linear-gradient(135deg, var(--fp-accent), var(--fp-accent2));
-    border: none;
-    color: white;
-    padding: 8px 13px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: opacity 0.15s;
-  }
-  #fp-add-btn:hover { opacity: 0.85; }
-
-  #fp-dm-bar {
-    display: none;
-    flex-wrap: wrap;
-    gap: 7px;
-    padding: 8px 14px;
-    border-top: 1px solid var(--fp-border);
-    flex-shrink: 0;
-    background: var(--fp-bg);
-  }
-  #fp-dm-bar.visible { display: flex; }
-  #fp-dm-label { font-size: 11px; color: var(--fp-muted); flex-basis: 100%; }
-  #fp-dm-input {
-    flex: 1;
-    background: var(--fp-surface);
-    border: 1px solid var(--fp-border);
-    color: var(--fp-text);
-    padding: 7px 10px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  #fp-dm-input:focus { border-color: var(--fp-accent); }
-  #fp-dm-input::placeholder { color: var(--fp-muted); }
-  #fp-dm-send {
-    background: var(--fp-accent);
-    border: none; color: white;
-    padding: 7px 12px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px; font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  #fp-dm-send:hover { opacity: 0.85; }
-
+  /* ── TOAST CONTAINER (outside panel, needs its own scope) ── */
   #fp-toasts {
-    position: fixed;
-    top: 16px; right: 16px;
-    z-index: 11000;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    pointer-events: none;
-    width: 290px;
+    position: fixed !important;
+    top: 16px !important;
+    right: 16px !important;
+    z-index: 11000 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    pointer-events: none !important;
+    width: 290px !important;
+    font-family: 'DM Sans', sans-serif !important;
   }
   .fp-toast {
-    background: var(--fp-surface);
-    border: 1px solid var(--fp-border);
+    all: initial;
+    font-family: 'DM Sans', sans-serif;
+    background: #0e1525;
+    border: 1px solid #1a2540;
     border-radius: 13px;
     padding: 12px 14px 0;
     box-shadow: 0 6px 24px rgba(0,0,0,0.55);
-    font-family: 'DM Sans', sans-serif;
-    color: var(--fp-text);
+    color: #e4eaf8;
     pointer-events: auto;
     cursor: pointer;
     overflow: hidden;
     position: relative;
+    display: block;
+    box-sizing: border-box;
     transform: translateX(110%);
     opacity: 0;
     transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease;
   }
-  .fp-toast.in  { transform: translateX(0); opacity: 1; }
-  .fp-toast.out { transform: translateX(110%); opacity: 0; transition: transform 0.28s ease, opacity 0.22s ease; }
-  .fp-toast-top  { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-  .fp-toast-icon { font-size: 15px; flex-shrink: 0; }
-  .fp-toast-title { font-size: 13px; font-weight: 600; flex: 1; }
-  .fp-toast-body  { font-size: 12px; color: var(--fp-muted); padding-bottom: 11px; line-height: 1.4; }
-  .fp-toast-bar-track { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.07); }
-  .fp-toast-bar { height: 100%; border-radius: 2px; width: 100%; }
+  .fp-toast.in  { transform: translateX(0) !important; opacity: 1 !important; }
+  .fp-toast.out { transform: translateX(110%) !important; opacity: 0 !important; transition: transform 0.28s ease, opacity 0.22s ease !important; }
+  .fp-toast-top  { display: flex !important; align-items: center !important; gap: 8px !important; margin-bottom: 4px !important; }
+  .fp-toast-icon { font-size: 15px !important; flex-shrink: 0 !important; }
+  .fp-toast-title { font-size: 13px !important; font-weight: 600 !important; flex: 1 !important; color: #e4eaf8 !important; }
+  .fp-toast-body  { font-size: 12px !important; color: #4a5878 !important; padding-bottom: 11px !important; line-height: 1.4 !important; }
+  .fp-toast-bar-track { position: absolute !important; bottom: 0 !important; left: 0 !important; right: 0 !important; height: 3px !important; background: rgba(255,255,255,0.07) !important; }
+  .fp-toast-bar { height: 100% !important; border-radius: 2px !important; width: 100% !important; display: block !important; }
+
+  /* ── TAB BUTTON ── */
+  #fp-tab {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    z-index: 10001 !important;
+    background: linear-gradient(180deg, #4f8ef7, #7c6af6) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 0 10px 10px 0 !important;
+    padding: 14px 8px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 6px !important;
+    box-shadow: 3px 0 16px rgba(79,142,247,0.35) !important;
+    transition: padding 0.2s, box-shadow 0.2s !important;
+    min-width: 0 !important;
+    width: auto !important;
+    margin: 0 !important;
+    border-radius: 0 10px 10px 0 !important;
+  }
+  #fp-tab:hover {
+    padding: 14px 12px !important;
+    box-shadow: 4px 0 22px rgba(79,142,247,0.5) !important;
+    background: linear-gradient(180deg, #4f8ef7, #7c6af6) !important;
+  }
+  #fp-tab-icon { font-size: 18px !important; line-height: 1 !important; }
+  #fp-tab-badge {
+    background: #f75b5b !important;
+    color: white !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    min-width: 16px !important;
+    height: 16px !important;
+    border-radius: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 3px !important;
+    opacity: 0 !important;
+    transform: scale(0.5) !important;
+    transition: opacity 0.2s, transform 0.2s !important;
+  }
+  #fp-tab-badge.visible { opacity: 1 !important; transform: scale(1) !important; }
+
+  /* ── OVERLAY ── */
+  #fp-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0,0,0,0.45) !important;
+    z-index: 10002 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity 0.3s ease !important;
+    display: block !important;
+  }
+  #fp-overlay.open { opacity: 1 !important; pointer-events: auto !important; }
+
+  /* ── SIDE PANEL — core isolation ── */
+  #fp-panel {
+    all: initial;
+    font-family: 'DM Sans', sans-serif;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 300px !important;
+    background: #080d1a !important;
+    border-right: 1px solid #1a2540 !important;
+    box-shadow: 0 0 40px rgba(0,0,0,0.7) !important;
+    z-index: 10003 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    color: #e4eaf8 !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+  #fp-panel.open { transform: translateX(0) !important; }
+
+  /* Reset ALL children of fp-panel */
+  #fp-panel * {
+    box-sizing: border-box !important;
+    font-family: 'DM Sans', sans-serif !important;
+  }
+
+  /* ── HEADER ── */
+  #fp-header {
+    display: flex !important;
+    align-items: center !important;
+    padding: 16px 14px 12px !important;
+    border-bottom: 1px solid #1a2540 !important;
+    gap: 10px !important;
+    flex-shrink: 0 !important;
+    background: #0e1525 !important;
+    width: 100% !important;
+  }
+  #fp-header-icon { font-size: 20px !important; }
+  #fp-header h3 {
+    font-family: 'Syne', sans-serif !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+    flex: 1 !important;
+    letter-spacing: 0.02em !important;
+    color: #e4eaf8 !important;
+    background: none !important;
+    padding: 0 !important;
+    border: none !important;
+    text-align: left !important;
+    text-transform: none !important;
+  }
+  #fp-close-btn {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    background: transparent !important;
+    border: 1px solid #1a2540 !important;
+    color: #4a5878 !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 7px !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: background 0.15s, color 0.15s !important;
+    flex-shrink: 0 !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+  #fp-close-btn:hover { background: #1a2540 !important; color: #e4eaf8 !important; }
+
+  /* ── TABS ROW ── */
+  #fp-tabs {
+    display: flex !important;
+    border-bottom: 1px solid #1a2540 !important;
+    flex-shrink: 0 !important;
+    background: #080d1a !important;
+    width: 100% !important;
+  }
+  .fp-tab-btn {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    flex: 1 !important;
+    padding: 10px 0 !important;
+    text-align: center !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: #4a5878 !important;
+    background: none !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    cursor: pointer !important;
+    transition: color 0.15s, border-color 0.15s !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .fp-tab-btn.active { color: #4f8ef7 !important; border-bottom-color: #4f8ef7 !important; }
+  .fp-tab-btn:hover:not(.active) { color: #e4eaf8 !important; }
+  .fp-tab-count {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #f75b5b !important;
+    color: white !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    min-width: 15px !important;
+    height: 15px !important;
+    border-radius: 8px !important;
+    padding: 0 3px !important;
+    margin-left: 4px !important;
+    vertical-align: middle !important;
+    opacity: 0 !important;
+    transform: scale(0.5) !important;
+    transition: opacity 0.2s, transform 0.2s !important;
+  }
+  .fp-tab-count.visible { opacity: 1 !important; transform: scale(1) !important; }
+
+  /* ── BODY + PANES ── */
+  #fp-body {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: #1a2540 transparent !important;
+    background: #080d1a !important;
+    display: block !important;
+  }
+  #fp-body::-webkit-scrollbar { width: 4px; }
+  #fp-body::-webkit-scrollbar-thumb { background: #1a2540; border-radius: 2px; }
+
+  /* KEY FIX: panes hidden by default, shown when active */
+  .fp-pane {
+    display: none !important;
+  }
+  .fp-pane.active {
+    display: block !important;
+  }
+
+  /* ── SECTION LABEL ── */
+  .fp-section-label {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.1em !important;
+    text-transform: uppercase !important;
+    color: #4a5878 !important;
+    padding: 12px 14px 4px !important;
+    display: block !important;
+    background: none !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+
+  /* ── FRIEND ROW ── */
+  .fp-friend {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 9px 14px !important;
+    transition: background 0.15s !important;
+    background: transparent !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+  .fp-friend:hover { background: #0e1525 !important; }
+
+  .fp-avatar {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-family: 'Syne', sans-serif !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: white !important;
+    flex-shrink: 0 !important;
+    position: relative !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .fp-dot {
+    position: absolute !important;
+    bottom: -2px !important;
+    right: -2px !important;
+    width: 11px !important;
+    height: 11px !important;
+    border-radius: 50% !important;
+    border: 2px solid #080d1a !important;
+  }
+  .fp-dot.online  { background: #22d47a !important; }
+  .fp-dot.offline { background: #4a5878 !important; }
+
+  .fp-friend-info {
+    flex: 1 !important;
+    min-width: 0 !important;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .fp-friend-name {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    color: #e4eaf8 !important;
+    display: block !important;
+    background: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .fp-friend-sub {
+    font-size: 11px !important;
+    color: #4a5878 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    margin-top: 1px !important;
+    display: block !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  .fp-friend-sub.online { color: #22d47a !important; }
+
+  .fp-actions {
+    display: flex !important;
+    gap: 5px !important;
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* ── ACTION BUTTONS (inside panel) ── */
+  .fp-btn {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    background: #0e1525 !important;
+    border: 1px solid #1a2540 !important;
+    color: #e4eaf8 !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: background 0.15s, border-color 0.15s !important;
+    flex-shrink: 0 !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .fp-btn:hover { background: #1a2540 !important; }
+  .fp-btn.ok  { border-color: #22d47a !important; color: #22d47a !important; }
+  .fp-btn.ok:hover  { background: rgba(34,212,122,0.12) !important; }
+  .fp-btn.del { border-color: #f75b5b !important; color: #f75b5b !important; }
+  .fp-btn.del:hover { background: rgba(247,91,91,0.12) !important; }
+
+  /* ── NOTIF ROW ── */
+  .fp-notif {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    padding: 10px 14px !important;
+    cursor: pointer !important;
+    transition: background 0.15s !important;
+    background: transparent !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+  .fp-notif:hover  { background: #0e1525 !important; }
+  .fp-notif.unread { background: rgba(79,142,247,0.07) !important; }
+  .fp-notif-icon   { font-size: 18px !important; flex-shrink: 0 !important; padding-top: 1px !important; }
+  .fp-notif-body   { flex: 1 !important; min-width: 0 !important; }
+  .fp-notif-title  { font-size: 13px !important; font-weight: 500 !important; line-height: 1.35 !important; color: #e4eaf8 !important; display: block !important; margin: 0 !important; }
+  .fp-notif-title b { color: #e4eaf8 !important; font-weight: 700 !important; }
+  .fp-notif-time   { font-size: 11px !important; color: #4a5878 !important; margin-top: 2px !important; display: block !important; }
+
+  /* ── EMPTY STATE ── */
+  .fp-empty {
+    text-align: center !important;
+    color: #4a5878 !important;
+    font-size: 13px !important;
+    padding: 36px 20px !important;
+    display: block !important;
+    background: none !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+  .fp-empty-icon { font-size: 32px !important; margin-bottom: 10px !important; display: block !important; }
+
+  /* ── ADD FRIEND BAR ── */
+  #fp-add-bar {
+    display: flex !important;
+    gap: 8px !important;
+    padding: 12px 14px !important;
+    border-top: 1px solid #1a2540 !important;
+    flex-shrink: 0 !important;
+    background: #0e1525 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #fp-add-input {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    flex: 1 !important;
+    background: #080d1a !important;
+    border: 1px solid #1a2540 !important;
+    color: #e4eaf8 !important;
+    padding: 8px 11px !important;
+    border-radius: 9px !important;
+    font-size: 13px !important;
+    outline: none !important;
+    transition: border-color 0.15s !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    display: block !important;
+  }
+  #fp-add-input:focus { border-color: #4f8ef7 !important; }
+  #fp-add-input::placeholder { color: #4a5878 !important; }
+  #fp-add-btn {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    background: linear-gradient(135deg, #4f8ef7, #7c6af6) !important;
+    border: none !important;
+    color: white !important;
+    padding: 8px 13px !important;
+    border-radius: 9px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    transition: opacity 0.15s !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  #fp-add-btn:hover { opacity: 0.85 !important; }
+
+  /* ── QUICK DM BAR ── */
+  #fp-dm-bar {
+    display: none !important;
+    flex-wrap: wrap !important;
+    gap: 7px !important;
+    padding: 8px 14px !important;
+    border-top: 1px solid #1a2540 !important;
+    flex-shrink: 0 !important;
+    background: #080d1a !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #fp-dm-bar.visible { display: flex !important; }
+  #fp-dm-label {
+    font-size: 11px !important;
+    color: #4a5878 !important;
+    flex-basis: 100% !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: none !important;
+  }
+  #fp-dm-input {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    flex: 1 !important;
+    background: #0e1525 !important;
+    border: 1px solid #1a2540 !important;
+    color: #e4eaf8 !important;
+    padding: 7px 10px !important;
+    border-radius: 9px !important;
+    font-size: 13px !important;
+    outline: none !important;
+    transition: border-color 0.15s !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    display: block !important;
+  }
+  #fp-dm-input:focus { border-color: #4f8ef7 !important; }
+  #fp-dm-input::placeholder { color: #4a5878 !important; }
+  #fp-dm-send {
+    all: initial !important;
+    font-family: 'DM Sans', sans-serif !important;
+    background: #4f8ef7 !important;
+    border: none !important;
+    color: white !important;
+    padding: 7px 12px !important;
+    border-radius: 9px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: opacity 0.15s !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  #fp-dm-send:hover { opacity: 0.85 !important; }
   `;
   document.head.appendChild(style);
 
-  // ── STEP 2: Inject HTML — MUST happen before any querySelector calls ──────
+  // ── HTML ─────────────────────────────────────────────────────────────────
   document.body.insertAdjacentHTML("beforeend", `
     <div id="fp-toasts"></div>
+
     <div id="fp-overlay"></div>
+
     <button id="fp-tab" title="Friends">
       <span id="fp-tab-icon">👥</span>
       <div id="fp-tab-badge"></div>
     </button>
+
     <div id="fp-panel">
       <div id="fp-header">
         <span id="fp-header-icon">👥</span>
         <h3>Friends</h3>
         <button id="fp-close-btn" title="Close">✕</button>
       </div>
+
       <div id="fp-tabs">
         <button class="fp-tab-btn active" data-tab="friends">Friends</button>
-        <button class="fp-tab-btn" data-tab="requests">
-          Requests<span class="fp-tab-count" id="fp-req-count"></span>
-        </button>
-        <button class="fp-tab-btn" data-tab="notifs">
-          Notifs<span class="fp-tab-count" id="fp-notif-count"></span>
-        </button>
+        <button class="fp-tab-btn" data-tab="requests">Requests<span class="fp-tab-count" id="fp-req-count"></span></button>
+        <button class="fp-tab-btn" data-tab="notifs">Notifs<span class="fp-tab-count" id="fp-notif-count"></span></button>
       </div>
+
       <div id="fp-body">
         <div class="fp-pane active" id="fp-pane-friends">
           <div class="fp-empty"><div class="fp-empty-icon">👥</div>Loading...</div>
@@ -485,11 +605,13 @@ async function init() {
           <div class="fp-empty"><div class="fp-empty-icon">🔔</div>No notifications yet.</div>
         </div>
       </div>
+
       <div id="fp-dm-bar">
         <div id="fp-dm-label"></div>
         <input id="fp-dm-input" placeholder="Quick message…" maxlength="200">
         <button id="fp-dm-send">Send</button>
       </div>
+
       <div id="fp-add-bar">
         <input id="fp-add-input" placeholder="Add by username…" maxlength="30">
         <button id="fp-add-btn">Add</button>
@@ -497,7 +619,7 @@ async function init() {
     </div>
   `);
 
-  // ── STEP 3: All state and logic — elements are guaranteed to exist now ────
+  // ── State ─────────────────────────────────────────────────────────────────
   let panelOpen    = false;
   let friends      = [];
   let pendingIn    = [];
@@ -509,16 +631,13 @@ async function init() {
   let unreadReqs   = 0;
   let ablyClient   = null;
 
-  // Safe element getters — return null gracefully, never crash
-  function gel(id) { return document.getElementById(id); }
-
-  const tabEl      = gel("fp-tab");
-  const tabBadge   = gel("fp-tab-badge");
-  const overlay    = gel("fp-overlay");
-  const panel      = gel("fp-panel");
-  const toastsEl   = gel("fp-toasts");
-  const reqCount   = gel("fp-req-count");
-  const notifCount = gel("fp-notif-count");
+  const tabEl      = document.getElementById("fp-tab");
+  const tabBadge   = document.getElementById("fp-tab-badge");
+  const overlay    = document.getElementById("fp-overlay");
+  const panel      = document.getElementById("fp-panel");
+  const toastsEl   = document.getElementById("fp-toasts");
+  const reqCount   = document.getElementById("fp-req-count");
+  const notifCount = document.getElementById("fp-notif-count");
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function esc(s) {
@@ -554,7 +673,6 @@ async function init() {
 
   // ── Badges ────────────────────────────────────────────────────────────────
   function updateBadges() {
-    if (!tabBadge || !reqCount || !notifCount) return; // guard
     const total = unreadNotifs + unreadReqs;
     tabBadge.textContent = total > 9 ? "9+" : total;
     tabBadge.classList.toggle("visible", total > 0);
@@ -566,7 +684,6 @@ async function init() {
 
   // ── Panel open / close ────────────────────────────────────────────────────
   function openPanel() {
-    if (!panel || !overlay) return; // guard
     panelOpen = true;
     panel.classList.add("open");
     overlay.classList.add("open");
@@ -574,18 +691,15 @@ async function init() {
   }
 
   function closePanel() {
-    if (!panel || !overlay) return; // guard
     panelOpen = false;
     panel.classList.remove("open");
     overlay.classList.remove("open");
     closeDm();
   }
 
-  // Attach listeners AFTER HTML injection (elements are guaranteed to exist)
-  if (tabEl)   tabEl.addEventListener("click", openPanel);
-  if (overlay) overlay.addEventListener("click", closePanel);
-  const closeBtn = gel("fp-close-btn");
-  if (closeBtn) closeBtn.addEventListener("click", closePanel);
+  tabEl.addEventListener("click", openPanel);
+  overlay.addEventListener("click", closePanel);
+  document.getElementById("fp-close-btn").addEventListener("click", closePanel);
 
   // ── Tabs ──────────────────────────────────────────────────────────────────
   function switchTab(name) {
@@ -663,9 +777,7 @@ async function init() {
 
   // ── Render: Friends ───────────────────────────────────────────────────────
   function renderFriends() {
-    const pane = gel("fp-pane-friends");
-    if (!pane) return; // GUARD CLAUSE
-
+    const pane = document.getElementById("fp-pane-friends");
     if (!friends.length) {
       pane.innerHTML = `<div class="fp-empty"><div class="fp-empty-icon">👥</div>No friends yet.<br>Search for someone below!</div>`;
       return;
@@ -702,9 +814,7 @@ async function init() {
 
   // ── Render: Requests ──────────────────────────────────────────────────────
   function renderRequests() {
-    const pane = gel("fp-pane-requests");
-    if (!pane) return; // GUARD CLAUSE
-
+    const pane = document.getElementById("fp-pane-requests");
     if (!pendingIn.length) {
       pane.innerHTML = `<div class="fp-empty"><div class="fp-empty-icon">📬</div>No pending requests.</div>`;
       return;
@@ -733,9 +843,7 @@ async function init() {
 
   // ── Render: Notifs ────────────────────────────────────────────────────────
   function renderNotifs() {
-    const pane = gel("fp-pane-notifs");
-    if (!pane) return; // GUARD CLAUSE
-
+    const pane = document.getElementById("fp-pane-notifs");
     if (!notifs.length) {
       pane.innerHTML = `<div class="fp-empty"><div class="fp-empty-icon">🔔</div>No notifications yet.</div>`;
       return;
@@ -778,15 +886,11 @@ async function init() {
   }
 
   // ── Friend actions ────────────────────────────────────────────────────────
-  const addBtn   = gel("fp-add-btn");
-  const addInput = gel("fp-add-input");
-  if (addBtn)   addBtn.addEventListener("click", sendRequest);
-  if (addInput) addInput.addEventListener("keydown", e => { if (e.key === "Enter") sendRequest(); });
+  document.getElementById("fp-add-btn").addEventListener("click", sendRequest);
+  document.getElementById("fp-add-input").addEventListener("keydown", e => { if (e.key === "Enter") sendRequest(); });
 
   async function sendRequest() {
-    const input = gel("fp-add-input");
-    if (!input) return;
-    const val = input.value.trim();
+    const val = document.getElementById("fp-add-input").value.trim();
     if (!val) return;
 
     const { data: target, error } = await supabase
@@ -797,19 +901,19 @@ async function init() {
       .maybeSingle();
 
     if (error) {
-      toast({ icon: "⚠️", title: "Error", body: "Could not connect to database.", color: "var(--fp-yellow)" });
+      toast({ icon: "⚠️", title: "Error", body: "Could not connect to database.", color: "#f7c94f" });
       return;
     }
     if (!target) {
-      toast({ icon: "❌", title: "User not found", body: `No user named "${esc(val)}"`, color: "var(--fp-red)" });
+      toast({ icon: "❌", title: "User not found", body: `No user named "${esc(val)}"`, color: "#f75b5b" });
       return;
     }
     if (target.user_id === myID) {
-      toast({ icon: "🤔", title: "That's you!", body: "You can't add yourself.", color: "var(--fp-yellow)" });
+      toast({ icon: "🤔", title: "That's you!", body: "You can't add yourself.", color: "#f7c94f" });
       return;
     }
     if (friends.find(f => f.id === target.user_id)) {
-      toast({ icon: "✅", title: "Already friends", color: "var(--fp-green)" });
+      toast({ icon: "✅", title: "Already friends", color: "#22d47a" });
       return;
     }
 
@@ -817,7 +921,7 @@ async function init() {
       .or(`and(requester_id.eq.${myID},addressee_id.eq.${target.user_id}),and(requester_id.eq.${target.user_id},addressee_id.eq.${myID})`)
       .maybeSingle();
     if (existing) {
-      toast({ icon: "⏳", title: "Already pending", color: "var(--fp-yellow)" });
+      toast({ icon: "⏳", title: "Already pending", color: "#f7c94f" });
       return;
     }
 
@@ -832,8 +936,8 @@ async function init() {
     });
     ablyNotify(target.user_id, { type: "friend_request", from_id: myID, from_name: myName });
 
-    input.value = "";
-    toast({ icon: "📨", title: "Request sent!", body: `Sent to ${esc(target.Name)}.`, color: "var(--fp-accent)" });
+    document.getElementById("fp-add-input").value = "";
+    toast({ icon: "📨", title: "Request sent!", body: `Sent to ${esc(target.Name)}.`, color: "#4f8ef7" });
   }
 
   async function acceptReq(fid, uid, name) {
@@ -863,34 +967,24 @@ async function init() {
   // ── Quick DM ──────────────────────────────────────────────────────────────
   function openDm(id, name) {
     dmTargetID = id; dmTargetName = name;
-    const label   = gel("fp-dm-label");
-    const dmBar   = gel("fp-dm-bar");
-    const dmInput = gel("fp-dm-input");
-    if (label)   label.textContent = `To: ${name}`;
-    if (dmBar)   dmBar.classList.add("visible");
-    if (dmInput) dmInput.focus();
+    document.getElementById("fp-dm-label").textContent = `To: ${name}`;
+    document.getElementById("fp-dm-bar").classList.add("visible");
+    document.getElementById("fp-dm-input").focus();
   }
-
   function closeDm() {
     dmTargetID = null;
-    const dmBar   = gel("fp-dm-bar");
-    const dmInput = gel("fp-dm-input");
-    if (dmBar)   dmBar.classList.remove("visible");
-    if (dmInput) dmInput.value = "";
+    document.getElementById("fp-dm-bar").classList.remove("visible");
+    document.getElementById("fp-dm-input").value = "";
   }
 
-  const dmSend  = gel("fp-dm-send");
-  const dmInput = gel("fp-dm-input");
-  if (dmSend)  dmSend.addEventListener("click", sendDm);
-  if (dmInput) dmInput.addEventListener("keydown", e => {
+  document.getElementById("fp-dm-send").addEventListener("click", sendDm);
+  document.getElementById("fp-dm-input").addEventListener("keydown", e => {
     if (e.key === "Enter")  sendDm();
     if (e.key === "Escape") closeDm();
   });
 
   async function sendDm() {
-    const input = gel("fp-dm-input");
-    if (!input) return;
-    const msg = input.value.trim();
+    const msg = document.getElementById("fp-dm-input").value.trim();
     if (!msg || !dmTargetID) return;
     const { data: me } = await supabase.from("users").select("Name").eq("user_id", myID).maybeSingle();
     const myName = me?.Name || "Someone";
@@ -899,14 +993,13 @@ async function init() {
       data: { from_id: myID, from_name: myName, message: msg }, read: false
     });
     ablyNotify(dmTargetID, { type: "quick_message", from_id: myID, from_name: myName, message: msg });
-    input.value = "";
-    toast({ icon: "💬", title: "Sent!", body: `Message sent to ${esc(dmTargetName)}.`, color: "var(--fp-accent)" });
+    document.getElementById("fp-dm-input").value = "";
+    toast({ icon: "💬", title: "Sent!", body: `Message sent to ${esc(dmTargetName)}.`, color: "#4f8ef7" });
     closeDm();
   }
 
-  // ── Toast ─────────────────────────────────────────────────────────────────
-  function toast({ icon = "🔔", title, body = "", onClick, color = "var(--fp-accent)" }) {
-    if (!toastsEl) return; // guard
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  function toast({ icon = "🔔", title, body = "", onClick, color = "#4f8ef7" }) {
     const el = document.createElement("div");
     el.className = "fp-toast";
     el.innerHTML = `
@@ -922,7 +1015,7 @@ async function init() {
     requestAnimationFrame(() => {
       el.classList.add("in");
       const bar = el.querySelector(".fp-toast-bar");
-      if (bar) setTimeout(() => { bar.style.transition = "width 5s linear"; bar.style.width = "0%"; }, 50);
+      setTimeout(() => { bar.style.transition = "width 5s linear"; bar.style.width = "0%"; }, 50);
     });
     const dismiss = () => {
       el.classList.add("out");
@@ -932,7 +1025,7 @@ async function init() {
     el.onclick = () => { clearTimeout(timer); dismiss(); if (onClick) onClick(); };
   }
 
-  // ── Ably ──────────────────────────────────────────────────────────────────
+  // ── Ably ───────────────────────────────────────────────────────────────────
   function initAbly() {
     if (typeof Ably === "undefined") return;
     ablyClient = new Ably.Realtime({ key: ABLY_KEY, clientId: myID });
@@ -958,12 +1051,10 @@ async function init() {
 
   function handleAbly(data) {
     if (!data?.type) return;
-
     loadNotifs().then(() => {
       renderNotifs();
       updateBadges();
     });
-
     if (data.type === "friend_request" || data.type === "friend_accepted" || data.type === "quick_message") {
       toast(nMeta({ type: data.type, data: data }));
       if (data.type === "friend_request")  loadRequests().then(renderRequests);
@@ -974,16 +1065,10 @@ async function init() {
     }
   }
 
-  // ── Final startup ─────────────────────────────────────────────────────────
+  // ── Init ───────────────────────────────────────────────────────────────────
   initAbly();
   updateBadges();
 }
 
-// ── BOOTLOADER: Wait for <body> to exist before calling init() ───────────────
-// This handles the case where friends-panel.js is loaded before DOMContentLoaded,
-// e.g. when injected dynamically by management.js after an innerHTML swap.
-if (document.body) {
-  init();
-} else {
-  document.addEventListener("DOMContentLoaded", init, { once: true });
-}
+// Boot
+init();
