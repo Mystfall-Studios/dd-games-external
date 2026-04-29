@@ -33,30 +33,25 @@ function pageIsPremium() {
 // Called once after we confirm the user is a valid, non-guest, non-blocked user.
 // Ensures Ably is present first, then imports friends-panel.js exactly once.
 function loadFriendsPanel() {
-  // If we're in a sub-frame, delegate up to the top window
-  const target = (window !== window.top) ? window.top : window;
-
-  // Already loaded guard on the TARGET window
-  if (target.__FP_LOADED) return;
+  // Already loaded guard (covers management.js being included on multiple
+  // pages that share the same JS module cache, e.g. via iframes)
+  if (window.__FP_LOADED) return;
 
   function doImport() {
-    target.__FP_LOADED = true;
-    // Import into the top window's context
-    const script = target.document.createElement("script");
-    script.type = "module";
-    const sep = "/dd-games/assets/friends-panel.js".includes('?') ? '&' : '?';
-    script.src = `/dd-games/assets/friends-panel.js${sep}v=${Date.now()}`;
-    (target.document.head || target.document.documentElement || target.document.body).appendChild(script);
+    import("/dd-games/assets/friends-panel.js").catch(e => {
+      console.warn("Friends panel failed to load:", e);
+    });
   }
 
-  if (typeof target.Ably !== "undefined") {
+  if (typeof Ably !== "undefined") {
     doImport();
   } else {
-    const script = target.document.createElement("script");
+    // Inject Ably first, then load the panel once it's ready
+    const script = document.createElement("script");
     script.src = "https://cdn.ably.io/lib/ably.min-1.js";
     script.onload  = doImport;
     script.onerror = () => console.warn("Ably failed to load — friends panel skipped.");
-    (target.document.head || target.document.documentElement || target.document.body).appendChild(script);
+    document.head.appendChild(script);
   }
 }
 
