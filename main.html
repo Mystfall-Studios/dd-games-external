@@ -451,6 +451,7 @@ function showMain(){
   loadWeather();
 
   if (!isGuest()) {
+    if (window.__FP_LOADED) return;
     import("/dd-games/assets/friends-panel.js").catch(e => console.warn("Friends panel:", e));
   }
 }

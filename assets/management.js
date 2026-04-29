@@ -29,21 +29,30 @@ function pageIsPremium() {
   return document.body.dataset.premium === "true";
 }
 
-// ── Friends panel loader ──────────────────────────────────────────────────────
-// Only attempt to load the friends panel when we are the top-level browsing
-// context. Game pages run management.js inside iframes; importing friends-panel
-// from there throws "Stopped execution in sub-frame" intentionally, but it
-// polluted the console with a red error. We now skip the import entirely when
-// we are not the top frame, so the error never occurs.
+// ── Friends panel loader ──────────────────────────────────────────────────
+// Called once after we confirm the user is a valid, non-guest, non-blocked user.
+// Ensures Ably is present first, then imports friends-panel.js exactly once.
 function loadFriendsPanel() {
-  if (window !== window.top) return;
+  // Already loaded guard (covers management.js being included on multiple
+  // pages that share the same JS module cache, e.g. via iframes)
   if (window.__FP_LOADED) return;
-  // NEW: if there's no body yet, wait for it
-  if (!document.body) {
-    document.addEventListener("DOMContentLoaded", () => loadFriendsPanel());
-    return;
+
+  function doImport() {
+    import("/dd-games/assets/friends-panel.js").catch(e => {
+      console.warn("Friends panel failed to load:", e);
+    });
   }
-  import("/dd-games/assets/friends-panel.js").catch(e => { ... });
+
+  if (typeof Ably !== "undefined") {
+    doImport();
+  } else {
+    // Inject Ably first, then load the panel once it's ready
+    const script = document.createElement("script");
+    script.src = "https://cdn.ably.io/lib/ably.min-1.js";
+    script.onload  = doImport;
+    script.onerror = () => console.warn("Ably failed to load — friends panel skipped.");
+    document.head.appendChild(script);
+  }
 }
 
 async function init() {
@@ -52,10 +61,9 @@ async function init() {
 
   // ── Guest mode ──────────────────────────────────────────────────────────
   if (deviceID === GUEST_ID) {
-    if (pageIsPremium()) {
-      window.location.href = PREMIUM_PAGE_URL;
-    }
-    return; // guests skip everything below
+    if (pageIsPremium()) window.location.href = PREMIUM_PAGE_URL;
+    // Guests don't get the friends panel
+    return;
   }
 
   // ── IP ──────────────────────────────────────────────────────────────────
@@ -91,40 +99,43 @@ async function init() {
       Access: true,
       premium: true
     });
-
-  } else {
-
-    // ── Blocked check ───────────────────────────────────────────────────
-    if (existingUser.blocked) {
-      document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
-      return;
+    // New users have no Name yet — redirect to setup, no panel needed
+    if (!location.pathname.endsWith("main.html")) {
+      window.location.href = "/dd-games/main.html";
     }
-
-    // ── Premium page check ──────────────────────────────────────────────
-    if (pageIsPremium() && existingUser.premium !== true) {
-      window.location.href = PREMIUM_PAGE_URL;
-      return;
-    }
-
-    // ── Name check — redirect to setup if missing ───────────────────────
-    if (!existingUser.Name || existingUser.Name.trim() === "") {
-      if (!location.pathname.endsWith("main.html")) {
-        window.location.href = "/dd-games/main.html";
-        return;
-      }
-    }
-
-    // ── Update visit info ───────────────────────────────────────────────
-    await supabase.from("users").update({
-      ip,
-      browser: info.browser,
-      os: info.os,
-      device: info.device,
-      page: info.page,
-      last_seen: new Date(),
-      visit_count: (existingUser.visit_count || 0) + 1
-    }).eq("user_id", deviceID);
+    return;
   }
+
+  // ── Blocked check ────────────────────────────────────────────────────────
+  if (existingUser.blocked) {
+    document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
+    return;
+  }
+
+  // ── Premium page check ───────────────────────────────────────────────────
+  if (pageIsPremium() && existingUser.premium !== true) {
+    window.location.href = PREMIUM_PAGE_URL;
+    return;
+  }
+
+  // ── Name check ───────────────────────────────────────────────────────────
+  if (!existingUser.Name || existingUser.Name.trim() === "") {
+    if (!location.pathname.endsWith("main.html")) {
+      window.location.href = "/dd-games/main.html";
+      return;
+    }
+  }
+
+  // ── Update visit info ────────────────────────────────────────────────────
+  await supabase.from("users").update({
+    ip,
+    browser: info.browser,
+    os: info.os,
+    device: info.device,
+    page: info.page,
+    last_seen: new Date(),
+    visit_count: (existingUser.visit_count || 0) + 1
+  }).eq("user_id", deviceID);
 
   // ── Playtime timer (every minute) ────────────────────────────────────────
   setInterval(async () => {
@@ -134,7 +145,7 @@ async function init() {
       .eq("user_id", deviceID).maybeSingle();
 
     if (error) { console.error("Playtime fetch error:", error); return; }
-    if (!data)  return;
+    if (!data) return;
 
     if (data.blocked) {
       document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
@@ -150,30 +161,19 @@ async function init() {
       Playtime: (data["Playtime"] || 0) + 1,
       last_seen: new Date()
     }).eq("user_id", deviceID);
-
   }, 60000);
 
-  // ── Friends panel ─────────────────────────────────────────────────────────
-  // Ably must be present on the page for the friends panel to work.
-  // If the current page already loaded Ably (via its own <script> tag),
-  // we import immediately. Otherwise we inject Ably first, then import.
-  if (window !== window.top) {
-    // We are inside an iframe (e.g. a game iframe) — skip entirely.
-    return;
-  }
-
-  if (typeof Ably !== "undefined") {
+  // ── Load friends panel ───────────────────────────────────────────────────
+  // Only load for users with a set username (fully registered users).
+  // main.html handles its own panel load after the user logs in/creates
+  // an account, so we skip it here to avoid a race condition where
+  // management.js fires before the user has authenticated in main.html.
+  if (!location.pathname.endsWith("main.html")) {
     loadFriendsPanel();
-  } else {
-    const ablyScript = document.createElement("script");
-    ablyScript.src = "https://cdn.ably.io/lib/ably.min-1.js";
-    ablyScript.onload  = loadFriendsPanel;
-    ablyScript.onerror = () => console.warn("Ably failed to load, friends panel skipped.");
-    document.head.appendChild(ablyScript);
   }
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// ── Entry point ──────────────────────────────────────────────────────────────
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
