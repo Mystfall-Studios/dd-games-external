@@ -458,12 +458,18 @@ function showMain(){
 
 async function loadWeather(){
   try {
-    const res = await fetch("https://api.codetabs.com/v1/proxy/?quest=https://api.codetabs.com/v1/weather");
+    const res = await fetch("https://wttr.in/?format=j1");
     const w = await res.json();
-    const weatherEl = el("weather");
-    if (weatherEl) weatherEl.textContent =
-      `${w.city}, ${w.country}: ${Math.round(w.tempC)}°C (${Math.round(w.tempF)}°F)`;
-  } catch(e){}
+    const area = w.nearest_area[0];
+    const city = area.areaName[0].value;
+    const country = area.country[0].value;
+    const curr = w.current_condition[0];
+    const c = curr.temp_C;
+    const f = curr.temp_F;
+    el("weather").textContent = `${city}, ${country}: ${c}°C (${f}°F)`;
+  } catch(e) {
+    el("weather").textContent = "";
+  }
 }
 
 window.openAccount = function(){
