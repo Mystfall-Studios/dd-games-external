@@ -364,5 +364,11 @@
     "image": "/dd-games/assets/images/noimage.png",
     "link": "/dd-games/games/0-scrap-metal-3.html",
     "premium": false
+},
+{
+"name": "Madalin Stunt Cars 2",
+    "image": "/dd-games/assets/images/madalin-stunt-cars-2.png",
+    "link": "/dd-games/games/0-madalin-stunt-cars-2.html",
+    "premium": false
 }
 ]
