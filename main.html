@@ -176,7 +176,11 @@ hr { border-color:#ffffff33; margin:16px 0; }
     <button class="secondary" onclick="showPanel('account')">← Cancel</button>
     <p id="mergeError" style="color:#f87171;margin-top:8px;display:none;"></p>
   </div>
-
+  <div id="LaunchMenu" class="panel hidden">
+    <h2>Launch Site</h2>
+    <p>We now have 2 new options for loading the site.</p>
+    <button onclick="OpenLink()">Open in about:blank (Hides from History)</button>
+    <button class="secondary" onclick="window.location.href='/dd-games/list.html'">Open Normally (Exposes to History)</button>
 </div>
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script type="module">
@@ -522,12 +526,7 @@ window.launchSite = function(){
     alert("You've been banned from DD Games for breaking the TOS.");
     return;
   }
-  OpenLink()
-  //document.body.style.margin = "0";
-  //document.body.style.height = "100vh";
-  //document.body.innerHTML = `
-  //  <iframe src="/dd-games/list.html"
-  //    style="border:none;width:100vw;height:100vh;"></iframe>`;
+  showPanel('LaunchMenu')
 }
 
 window.RequestForm = function(){

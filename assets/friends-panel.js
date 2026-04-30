@@ -6,9 +6,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
 // --- PREVENT DOUBLE LOADING ---
-if (window !== window.top) {
-  throw new Error("Friends Panel: Stopped execution in sub-frame.");
-}
 if (window.__FP_LOADED) {
   console.warn("Friends Panel: Already loaded, skipping.");
   throw new Error("Friends Panel: Already loaded.");
