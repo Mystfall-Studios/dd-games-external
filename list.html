@@ -113,7 +113,7 @@ body {
   cursor: pointer;
 }
 
-/* ===== POPUP ===== */
+/* ===== WEEKLY POPUP ===== */
 #popupOverlay {
   position: fixed;
   inset: 0;
@@ -152,11 +152,197 @@ body {
   color: white;
   cursor: pointer;
 }
+
+/* ===== GAME REQUEST MODAL ===== */
+#reqOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 10000;
+}
+#reqOverlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#reqBox {
+  background: #0f172a;
+  border: 1px solid #1e3a5f;
+  border-radius: 16px;
+  padding: 32px 36px;
+  width: min(480px, 90%);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  transform: translateY(20px) scale(0.97);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-family: Arial, sans-serif;
+  color: #e2e8f0;
+  position: relative;
+}
+#reqOverlay.show #reqBox {
+  transform: translateY(0) scale(1);
+}
+
+#reqBox h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+#reqBox p.req-sub {
+  margin: 0 0 24px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.req-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.req-field label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.req-field input,
+.req-field select,
+.req-field textarea {
+  background: #1a2540;
+  border: 1px solid #1e3a5f;
+  color: #e2e8f0;
+  padding: 10px 13px;
+  border-radius: 9px;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.req-field input:focus,
+.req-field select:focus,
+.req-field textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+.req-field input::placeholder,
+.req-field textarea::placeholder {
+  color: #374151;
+}
+.req-field select option {
+  background: #1a2540;
+  color: #e2e8f0;
+}
+.req-field textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.req-char-count {
+  font-size: 11px;
+  color: #475569;
+  text-align: right;
+  margin-top: 2px;
+}
+.req-char-count.warn { color: #f59e0b; }
+.req-char-count.over { color: #ef4444; }
+
+.req-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+#reqSubmitBtn {
+  flex: 1;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 11px 0;
+  border-radius: 9px;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+#reqSubmitBtn:hover { background: #2563eb; }
+#reqSubmitBtn:active { transform: scale(0.98); }
+#reqSubmitBtn:disabled {
+  background: #1e3a5f;
+  color: #475569;
+  cursor: not-allowed;
+  transform: none;
+}
+#reqCancelBtn {
+  background: #1a2540;
+  color: #94a3b8;
+  border: 1px solid #1e3a5f;
+  padding: 11px 20px;
+  border-radius: 9px;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#reqCancelBtn:hover { background: #1e2d4a; color: #e2e8f0; }
+
+#reqStatus {
+  margin-top: 12px;
+  font-size: 13px;
+  text-align: center;
+  min-height: 18px;
+}
+#reqStatus.success { color: #4ade80; }
+#reqStatus.error   { color: #f87171; }
+
+/* success checkmark animation */
+#reqSuccessAnim {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0 8px;
+  gap: 12px;
+}
+#reqSuccessAnim .check-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.15);
+  border: 2px solid #22c55e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes popIn {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+#reqSuccessAnim p {
+  color: #94a3b8;
+  font-size: 14px;
+  text-align: center;
+  margin: 0;
+}
+#reqSuccessAnim strong {
+  color: #e2e8f0;
+}
 </style>
 </head>
 
 <body>
-<!-- POPUP -->
+<!-- WEEKLY POPUP -->
 <div id="popupOverlay">
   <div id="popupBox">
     <h2 id="popupTitle"></h2>
@@ -164,13 +350,62 @@ body {
     <button onclick="dismissPopup()">Dismiss</button>
   </div>
 </div>
+
+<!-- GAME REQUEST MODAL -->
+<div id="reqOverlay">
+  <div id="reqBox">
+    <h2>🎮 Request a Game</h2>
+    <p class="req-sub">Got a game you want added? Fill this out and we'll look into it.</p>
+
+    <div id="reqForm">
+      <div class="req-field">
+        <label>Game Name *</label>
+        <input id="reqGameName" type="text" placeholder="e.g. Hollow Knight" maxlength="80" autocomplete="off">
+      </div>
+
+      <div class="req-field">
+        <label>Platform / Origin</label>
+        <select id="reqPlatform">
+          <option value="">Not sure</option>
+          <option value="PC (Steam)">PC (Steam)</option>
+          <option value="PC (itch.io)">PC (itch.io)</option>
+          <option value="PC (Other)">PC (Other)</option>
+          <option value="Browser / HTML5">Browser / HTML5</option>
+          <option value="Mobile (iOS/Android)">Mobile (iOS/Android)</option>
+          <option value="Console">Console</option>
+          <option value="Flash / Ruffle">Flash / Ruffle</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div class="req-field">
+        <label>Why do you want it? <span style="color:#475569;font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <textarea id="reqReason" placeholder="It would be awesome because..." maxlength="300"></textarea>
+        <div class="req-char-count" id="reqCharCount">0 / 300</div>
+      </div>
+
+      <div class="req-actions">
+        <button id="reqCancelBtn" onclick="closeRequestModal()">Cancel</button>
+        <button id="reqSubmitBtn" onclick="submitRequest()">Send Request</button>
+      </div>
+      <div id="reqStatus"></div>
+    </div>
+
+    <div id="reqSuccessAnim">
+      <div class="check-circle">✓</div>
+      <p><strong id="reqSuccessGame"></strong> has been submitted!<br>We'll check it out.</p>
+      <button id="reqCancelBtn" style="margin-top:8px;width:100%;justify-content:center;" onclick="closeRequestModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <button class="back-button" onclick="window.location.href='https://davcode149.github.io/dd-games/main.html'">← Back</button>
 <h2 style="color:white;margin-top:30px;">Quick Links</h2>
 <div class="grid-container" id="quickLinks">
 
   <div class="grid-item" onclick="requestGame()">
     <img src="/dd-games/assets/images/request.jpg">
-    <h3>🎮 Request a Game</h3>
+    <h3>🎮 Request a Game (WORKING)</h3>
   </div>
 
   <div class="grid-item" onclick="window.open('https://discord.gg/HqQDKw7UWZ')">
@@ -201,7 +436,10 @@ body {
 <script>
 let allGames = [];
 
-/* ===== LOAD USER (FIXED) ===== */
+const SUPABASE_URL = "https://lqfcntoldutgkzaboqfk.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d";
+
+/* ===== LOAD USER ===== */
 async function loadUser() {
   let myID = localStorage.getItem("device_id");
   if (!myID) {
@@ -210,14 +448,14 @@ async function loadUser() {
   }
 
   const url =
-    "https://lqfcntoldutgkzaboqfk.supabase.co/rest/v1/users" +
+    SUPABASE_URL + "/rest/v1/users" +
     "?select=premium" +
     "&user_id=eq." + encodeURIComponent(myID);
 
   const res = await fetch(url, {
     headers: {
-      "apikey": "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d",
-      "Authorization": "Bearer sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d",
+      "apikey": SUPABASE_KEY,
+      "Authorization": "Bearer " + SUPABASE_KEY,
       "Accept": "application/json"
     }
   });
@@ -233,9 +471,96 @@ async function loadUser() {
   return data[0].premium === true;
 }
 
+/* ===== GAME REQUEST MODAL ===== */
 function requestGame() {
-  alert("We are working on a new system to request games. Please join our Discord in the meantime to request games.")
-};
+  document.getElementById("reqGameName").value = "";
+  document.getElementById("reqPlatform").value = "";
+  document.getElementById("reqReason").value = "";
+  document.getElementById("reqCharCount").textContent = "0 / 300";
+  document.getElementById("reqCharCount").className = "req-char-count";
+  document.getElementById("reqStatus").textContent = "";
+  document.getElementById("reqStatus").className = "";
+  document.getElementById("reqForm").style.display = "block";
+  document.getElementById("reqSuccessAnim").style.display = "none";
+  document.getElementById("reqSubmitBtn").disabled = false;
+  document.getElementById("reqSubmitBtn").textContent = "Send Request";
+  document.getElementById("reqOverlay").classList.add("show");
+  setTimeout(() => document.getElementById("reqGameName").focus(), 350);
+}
+
+function closeRequestModal() {
+  document.getElementById("reqOverlay").classList.remove("show");
+}
+
+// Close on backdrop click
+document.getElementById("reqOverlay").addEventListener("click", function(e) {
+  if (e.target === this) closeRequestModal();
+});
+
+// Char counter for reason field
+document.getElementById("reqReason").addEventListener("input", function() {
+  const len = this.value.length;
+  const el = document.getElementById("reqCharCount");
+  el.textContent = len + " / 300";
+  el.className = "req-char-count" + (len > 270 ? (len >= 300 ? " over" : " warn") : "");
+});
+
+// Submit on Enter in game name field (if not in textarea)
+document.getElementById("reqGameName").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") submitRequest();
+});
+
+async function submitRequest() {
+  const gameName = document.getElementById("reqGameName").value.trim();
+  const platform = document.getElementById("reqPlatform").value;
+  const reason   = document.getElementById("reqReason").value.trim();
+  const statusEl = document.getElementById("reqStatus");
+  const submitBtn = document.getElementById("reqSubmitBtn");
+
+  statusEl.className = "";
+  statusEl.textContent = "";
+
+  if (!gameName) {
+    statusEl.className = "error";
+    statusEl.textContent = "⚠ Please enter a game name.";
+    document.getElementById("reqGameName").focus();
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Sending…";
+
+  const userId = localStorage.getItem("device_id");
+
+  try {
+    const res = await fetch(SUPABASE_URL + "/functions/v1/request-game", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + SUPABASE_KEY
+      },
+      body: JSON.stringify({ gameName, platform, reason, userId })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Something went wrong.");
+    }
+
+    // Show success state
+    document.getElementById("reqSuccessGame").textContent = gameName;
+    document.getElementById("reqForm").style.display = "none";
+    document.getElementById("reqSuccessAnim").style.display = "flex";
+
+  } catch (err) {
+    statusEl.className = "error";
+    statusEl.textContent = "⚠ " + err.message;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Send Request";
+  }
+}
+
 function openDiscord() {
   alert("Discord may be blocked on school/workspace networks. If Discord is blocked, Go to bit.ly/dd-games-dc on another device without restrictions or on your Home Wi-Fi.")
   window.open('https://discord.gg/HqQDKw7UWZ')
@@ -272,29 +597,29 @@ function renderGames(isPremiumUser) {
     item.appendChild(img);
     item.appendChild(title);
 
-   if(game.premium && !isPremiumUser){
-  img.style.filter = "blur(4px)";
+    if(game.premium && !isPremiumUser){
+      img.style.filter = "blur(4px)";
 
-  const lock = document.createElement("div");
-  lock.className = "lock-overlay";
-  lock.textContent = "🔒 Registered Users Only";
-  item.appendChild(lock);
+      const lock = document.createElement("div");
+      lock.className = "lock-overlay";
+      lock.textContent = "🔒 Registered Users Only";
+      item.appendChild(lock);
 
-  item.onclick = () => {
-    const id = localStorage.getItem("device_id");
-    const GUEST_ID = "00000000-0000-0000-0000-000000000000";
-    if(!id || id === GUEST_ID){
-      window.location.href = "/dd-games/main.html";
+      item.onclick = () => {
+        const id = localStorage.getItem("device_id");
+        const GUEST_ID = "00000000-0000-0000-0000-000000000000";
+        if(!id || id === GUEST_ID){
+          window.location.href = "/dd-games/main.html";
+        } else {
+          window.location.href = "/dd-games/assets/premium-info.html";
+        }
+      };
+
     } else {
-      window.location.href = "/dd-games/assets/premium-info.html";
+      item.onclick = () => {
+        window.location.href = game.link;
+      };
     }
-  };
-
-} else {
-  item.onclick = () => {
-    window.location.href = game.link;
-  };
-}
 
     grid.appendChild(item);
   });
@@ -319,7 +644,7 @@ document.getElementById("sortSelect").addEventListener("change", loadGames);
 
 loadGames();
 
-/* ===== POPUP ===== */
+/* ===== WEEKLY POPUP ===== */
 const popupTitleText = "Weekly Update";
 const popupDescText =
   "Welp. DD Games is not doing so great. Time to get more people! I'll be removing the password lock, and make it so that you can access a limited portion of our library, and you can get full access to verifying in Discord! If you already have an account, you will keep full access to the site. If you do not have Discord, I'll have a form setup where you can request full Access without Discord Verification. Thank you everyone for supporting DD Games!";
@@ -329,13 +654,13 @@ function showPopupIfValid() {
   if (!popupTitleText || !popupDescText) return;
   if (popupExpireTime && new Date() > new Date(popupExpireTime)) return;
 
-  popupTitle.textContent = popupTitleText;
-  popupDesc.textContent = popupDescText;
-  popupOverlay.classList.add("show");
+  document.getElementById("popupTitle").textContent = popupTitleText;
+  document.getElementById("popupDesc").textContent = popupDescText;
+  document.getElementById("popupOverlay").classList.add("show");
 }
 
 function dismissPopup() {
-  popupOverlay.classList.remove("show");
+  document.getElementById("popupOverlay").classList.remove("show");
 }
 
 showPopupIfValid();
@@ -441,6 +766,5 @@ channel.presence.subscribe("leave", updateCount);
 
 ably.connection.once("connected", tryEnterPresence);
 </script>
-<script type="module" src="/dd-games/assets/management.js"></script>
 </body>
 </html>
