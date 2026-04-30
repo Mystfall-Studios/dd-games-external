@@ -199,7 +199,9 @@ function setText(id, val){
   const node = el(id);
   if (node) node.textContent = val;
 }
-
+ function OpenLink() {
+    var win = window.open();   win.document.body.style.margin = '0';   win.document.body.style.height = '100vh';   var iframe = win.document.createElement('iframe');   iframe.style.border = 'none';   iframe.style.width = '100%';   iframe.style.height = '100%';   iframe.style.margin = '0';   iframe.src = "/dd-games/list.html";   win.document.body.appendChild(iframe);
+    }
 window.showPanel = function(id){
   PANELS.forEach(p => {
     const node = el(p);
@@ -520,11 +522,12 @@ window.launchSite = function(){
     alert("You've been banned from DD Games for breaking the TOS.");
     return;
   }
-  document.body.style.margin = "0";
-  document.body.style.height = "100vh";
-  document.body.innerHTML = `
-    <iframe src="/dd-games/list.html"
-      style="border:none;width:100vw;height:100vh;"></iframe>`;
+  OpenLink()
+  //document.body.style.margin = "0";
+  //document.body.style.height = "100vh";
+  //document.body.innerHTML = `
+  //  <iframe src="/dd-games/list.html"
+  //    style="border:none;width:100vw;height:100vh;"></iframe>`;
 }
 
 window.RequestForm = function(){
