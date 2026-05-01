@@ -176,12 +176,19 @@ hr { border-color:#ffffff33; margin:16px 0; }
     <button class="secondary" onclick="showPanel('account')">← Cancel</button>
     <p id="mergeError" style="color:#f87171;margin-top:8px;display:none;"></p>
   </div>
+  <!-- Launch Menu -->
   <div id="LaunchMenu" class="panel hidden">
     <h2>Launch Site</h2>
     <p>We now have 2 new options for loading the site.</p>
     <button onclick="OpenLink()">Open in about:blank (Hides from History)</button>
     <button onclick="window.location.href='/dd-games/list.html'">Open Normally (Exposes to History)</button>
     <button class="secondary" onclick="backMain()">←  Back</button>
+</div>
+ <!-- Access Restricted -->
+  <div id="NoAccess" class="panel hidden">
+    <h2>Access Restricted</h2>
+    <p>We've detected suspicious activity on your account or we need to confirm some details. Please contact David physically or in our Discord Server. You will not be able to use DD Games until then.</p>
+    <button onclick="backMain()">←  Back</button>
 </div>
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script type="module">
@@ -551,7 +558,8 @@ window.launchSite = function(){
     alert("You've been banned from DD Games for breaking the TOS.");
     return;
   }
-  showPanel('LaunchMenu')
+  if(!userRow.Access)
+  showPanel('NoAccess')
 }
 
 window.RequestForm = function(){
