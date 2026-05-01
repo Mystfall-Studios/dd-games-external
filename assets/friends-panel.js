@@ -18,8 +18,18 @@ const ABLY_KEY     = "f4iV1g.CdzItg:DMBDb8oONqNtkeH6dq25U4DYKAfd-7GQ6uEKXuqUJVw"
 const GUEST_ID     = "00000000-0000-0000-0000-000000000000";
 
 async function init() {
-  if (window !== window.top) return;
-
+  if (window !== window.top) {
+  try {
+    // This throws if parent is cross-origin (e.g. inside a game iframe)
+    // It succeeds silently if parent is about:blank or same-origin
+    const topHref = window.top.location.href;
+    if (topHref !== "about:blank" && window.top.location.hostname !== location.hostname) {
+      throw new Error("Friends Panel: Stopped execution in sub-frame.");
+    }
+  } catch(e) {
+    throw new Error("Friends Panel: Stopped execution in sub-frame.");
+  }
+}
   const myID = localStorage.getItem("device_id");
   if (!myID || myID === GUEST_ID) return;
 
