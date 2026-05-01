@@ -370,5 +370,17 @@
     "image": "/dd-games/assets/images/madalin-stunt-cars-2.png",
     "link": "/dd-games/games/0-madalin-stunt-cars-2.html",
     "premium": false
+},
+{
+"name": "Slope",
+    "image": "/dd-games/assets/images/slope.png",
+    "link": "/dd-games/games/0-slope.html",
+    "premium": false
+},
+{
+"name": "Learn to Fly",
+    "image": "/dd-games/assets/images/learn-to-fly.png",
+    "link": "/dd-games/games/0-learn-to-fly.html",
+    "premium": false
 }
 ]
