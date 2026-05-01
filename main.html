@@ -204,8 +204,32 @@ function setText(id, val){
   const node = el(id);
   if (node) node.textContent = val;
 }
-window.OpenLink = function(){
-    var win = window.open();   win.document.body.style.margin = '0';   win.document.body.style.height = '100vh';   var iframe = win.document.createElement('iframe');   iframe.style.border = 'none';   iframe.style.width = '100%';   iframe.style.height = '100%';   iframe.style.margin = '0';   iframe.src = "/dd-games/list.html";   win.document.body.appendChild(iframe); window.location.href='https://google.com'
+window.OpenLink = function() {
+  var win = window.open();
+  win.document.body.style.margin = '0';
+  win.document.body.style.height = '100vh';
+
+  // Inject Ably into the about:blank parent first, then the friends panel
+  var ably = win.document.createElement('script');
+  ably.src = 'https://cdn.ably.io/lib/ably.min-1.js';
+  ably.onload = function() {
+    var panel = win.document.createElement('script');
+    panel.type = 'module';
+    panel.src = '/dd-games/assets/friends-panel.js';
+    win.document.head.appendChild(panel);
+  };
+  win.document.head.appendChild(ably);
+
+  // Create the iframe
+  var iframe = win.document.createElement('iframe');
+  iframe.style.border = 'none';
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
+  iframe.style.margin = '0';
+  iframe.src = '/dd-games/list.html';
+  win.document.body.appendChild(iframe);
+
+  window.location.href = 'https://google.com';
 }
 window.showPanel = function(id){
   PANELS.forEach(p => {
