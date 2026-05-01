@@ -1,11 +1,5 @@
 [
   {
-    "name": "Game Request Form",
-    "image": "/dd-games/assets/images/request.jpg",
-    "link": "https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=Jrm3b-vtT02C6AwQ5Ee1cNLNR-GLk9tJrwn7dwbdJRtUM0FXU0JTWTExME9PM1U3T1ZHS1lSSlJJRy4u",
-    "premium": false
-},
-  {
     "name": "Deltarune",
     "image": "/dd-games/assets/images/deltarune.png",
     "link": "/dd-games/games/0-deltarune.html",
@@ -381,6 +375,12 @@
 "name": "Learn to Fly",
     "image": "/dd-games/assets/images/learn-to-fly.png",
     "link": "/dd-games/games/0-learn-to-fly.html",
+    "premium": false
+},
+{
+"name": "1v1.lol",
+    "image": "/dd-games/assets/images/1v1lol.png",
+    "link": "/dd-games/games/0-1v1.lol.html",
     "premium": false
 }
 ]

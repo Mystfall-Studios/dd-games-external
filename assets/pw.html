@@ -16,6 +16,7 @@
     --text: #111827;
     --muted: #6b7280;
     --accent: #d93b32;
+    --green: #16a34a;
   }
   body {
     margin: 0;
@@ -35,37 +36,43 @@
     padding: 40px 50px;
     width: min(400px, 90%);
     text-align: center;
-    z-index: 1;
   }
-  input[type="password"] {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    outline: none;
-    font-size: 15px;
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 99px;
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-size: 22px;
+    margin: 0 0 10px;
+  }
+  p {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0 0 24px;
   }
   button {
     width: 100%;
-    margin-top: 18px;
     background: var(--accent);
     color: #fff;
     border: none;
     border-radius: 8px;
-    padding: 10px 0;
+    padding: 11px 0;
     font-size: 15px;
+    font-weight: 600;
     cursor: pointer;
+    transition: opacity 0.15s;
   }
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  .error {
-    color: #c53030;
-    font-size: 13px;
-    margin-top: 10px;
-    display: none;
-  }
+  button:hover { opacity: 0.88; }
 
   /* === TOS MODAL === */
   #tosOverlay {
@@ -87,106 +94,72 @@
     display: flex;
     flex-direction: column;
   }
+  #tosBox h2 { margin: 0 0 12px; font-size: 18px; }
   #tosContent {
     overflow-y: auto;
     white-space: pre-wrap;
     font-size: 14px;
     border: 1px solid var(--border);
+    border-radius: 6px;
     padding: 10px;
     margin-bottom: 15px;
+    flex: 1;
+    color: var(--text);
   }
   .tosButtons {
     display: flex;
     gap: 10px;
   }
+  .tosButtons button { margin: 0; }
+  .tosButtons button.secondary {
+    background: #6b7280;
+  }
 </style>
-
-<!-- Firebase (kept for alt password logging) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAT-oK3scrUg7Jt1tEQk6b7IP2-ah1OcCc",
-    authDomain: "dd-games-6aa54.firebaseapp.com",
-    databaseURL: "https://dd-games-6aa54-default-rtdb.firebaseio.com",
-    projectId: "dd-games-6aa54",
-    storageBucket: "dd-games-6aa54.firebasestorage.app",
-    messagingSenderId: "26805694246",
-    appId: "1:26805694246:web:dd9bce62c16fbfc762dbe7"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-</script>
-
 </head>
 <body>
 
 <div class="card">
-  <h1>Access Restricted</h1>
-  <p>Please enter the password to continue.</p>
-  <input type="password" id="passwordInput" placeholder="Enter password" autocomplete="off">
-  <button id="continueBtn" onclick="checkPassword()">Continue</button>
-  <div id="error" class="error">Password Incorrect</div>
+  <div class="badge">🔓 Password-Free Access</div>
+  <h1>Welcome to DD Games</h1>
+  <p>
+    DD Games is now <strong>password-less</strong> — no password needed to get in.<br>
+    Just agree to our Terms of Service and enjoy the site!
+  </p>
+  <button onclick="handleEnter()">Continue to DD Games →</button>
 </div>
 
 <!-- TOS Modal -->
-<div id="tosOverlay">
+<div id="tosOverlay" style="display:none;">
   <div id="tosBox">
-    <h2>DD Games - Terms of Service</h2>
+    <h2>DD Games — Terms of Service</h2>
     <div id="tosContent">Loading...</div>
     <div class="tosButtons">
-      <button onclick="acceptTOS()">Accept</button>
-      <button onclick="declineTOS()">Decline</button>
+      <button onclick="acceptTOS()">✅ Accept</button>
+      <button class="secondary" onclick="declineTOS()">Decline</button>
     </div>
   </div>
 </div>
 
 <script>
-  const SUPABASE_URL = "https://lqfcntoldutgkzaboqfk.supabase.co";
   const TOS_KEY = "tosAccepted";
-  const ACCESS_TOKEN_KEY = "ddAccessToken";
 
-  // ── Load main page ────────────────────────────────────────────────────────
-  // FIX: requestAnimationFrame wraps the script re-injection loop.
-  //      This gives the browser one full render frame to "paint" the new HTML
-  //      before any JavaScript tries to query elements within it.
-  //      Without this, scripts run before the DOM is stable and crash on
-  //      getElementById calls that return null.
   function loadListPage() {
-    const cacheBuster = `?v=${Date.now()}`;               // ADD THIS LINE
-    fetch(`/dd-games/main.html${cacheBuster}`)  
+    fetch("/dd-games/main.html")
       .then(res => res.text())
       .then(html => {
-        // Reset the __FP_LOADED flag so the friends panel can re-init
-        // if the user navigates back to main.html via pw.html injection.
-        if (typeof window !== "undefined") window.__FP_LOADED = false;
-
         document.documentElement.innerHTML = html;
-
-        // requestAnimationFrame: waits for browser to finish one render frame
-        // (i.e. the HTML above is fully parsed + painted) before firing scripts.
         requestAnimationFrame(() => {
-          // Second rAF for extra safety on slower devices / large DOMs
-          requestAnimationFrame(() => {
-            Array.from(document.querySelectorAll("script")).forEach(oldScript => {
-              const newScript = document.createElement("script");
-              Array.from(oldScript.attributes).forEach(attr =>
-                newScript.setAttribute(attr.name, attr.value)
-              );
-              if (oldScript.innerHTML) {
-                newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-              }
-              if (oldScript.parentNode) {
-                oldScript.parentNode.replaceChild(newScript, oldScript);
-              }
-            });
+          Array.from(document.querySelectorAll("script")).forEach(oldScript => {
+            const newScript = document.createElement("script");
+            Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+            if (oldScript.innerHTML) newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+            oldScript.parentNode.replaceChild(newScript, oldScript);
           });
         });
       })
       .catch(() => alert("Failed to load main.html"));
   }
 
-  // ── TOS ───────────────────────────────────────────────────────────────────
   function showTOS() {
     fetch("/dd-games/TOS.md")
       .then(res => res.text())
@@ -207,71 +180,16 @@
 
   function declineTOS() {
     window.close();
-    document.body.innerHTML = "<h1>Access denied</h1>";
+    document.body.innerHTML = "<h1 style='font-family:Arial;text-align:center;margin-top:20vh;'>Access denied.</h1>";
   }
 
-  // ── Firebase alt log ───────────────────────────────────────────────────────
-  async function logAltPassword() {
-    const res = await fetch("https://api.ipify.org?format=json");
-    const { ip } = await res.json();
-    const entry = { ip, time: new Date().toISOString() };
-    db.ref("altLogs").push(entry);
-    db.ref("altCount").transaction(n => (n || 0) + 1);
-  }
-
-  // ── Password check (server-side) ───────────────────────────────────────────
-  async function checkPassword() {
-    const input = document.getElementById("passwordInput").value.trim();
-    const error = document.getElementById("error");
-    const btn   = document.getElementById("continueBtn");
-
-    error.style.display = "none";
-    if (!input) return;
-
-    btn.disabled = true;
-    btn.textContent = "Checking...";
-
-    let data;
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/check-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d"
-        },
-        body: JSON.stringify({ password: input })
-      });
-      data = await res.json();
-    } catch(e) {
-      error.textContent = "Connection error. Please try again.";
-      error.style.display = "block";
-      btn.disabled = false;
-      btn.textContent = "Continue";
-      return;
-    }
-
-    if (!data.success) {
-      error.textContent = "Password Incorrect";
-      error.style.display = "block";
-      btn.disabled = false;
-      btn.textContent = "Continue";
-      return;
-    }
-
-    localStorage.setItem(ACCESS_TOKEN_KEY, data.token);
-
-    if (data.alt) await logAltPassword();
-
+  function handleEnter() {
     if (localStorage.getItem(TOS_KEY) === "true") {
       loadListPage();
     } else {
       showTOS();
     }
   }
-
-  document.getElementById("passwordInput").addEventListener("keypress", e => {
-    if (e.key === "Enter") checkPassword();
-  });
 </script>
 
 </body>
