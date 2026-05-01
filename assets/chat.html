@@ -401,6 +401,15 @@ const supabase = createClient(
   "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d"
 );
 
+/* ── USER TIMEZONE ──
+   Supabase stores all timestamps as UTC (timestamptz).
+   We resolve them into the user's local timezone for all display.
+   new Date(isoString) from Supabase always gives a correct UTC Date —
+   toLocaleTimeString / toLocaleDateString then convert to local time automatically.
+   We pin the locale options explicitly so behaviour is consistent across browsers.
+*/
+const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 /* ── DEVICE / GUEST CHECK ── */
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
 let myID = localStorage.getItem("device_id");
@@ -520,31 +529,68 @@ function renderContent(txt){
   return txt;
 }
 
-/* ── FORMAT HELPERS ── */
+/* ── FORMAT HELPERS ──
+   All display formatting uses the user's local timezone via USER_TZ.
+   Supabase returns ISO 8601 UTC strings — new Date() parses these correctly.
+*/
+
+// 12-hour time in the user's local timezone e.g. "3:42 PM"
 function formatTime(date){
-  return date.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+  return date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: USER_TZ
+  });
 }
 
+// Returns the local calendar date parts for a UTC Date object
+function localDateParts(date){
+  const parts = new Intl.DateTimeFormat(undefined, {
+    year: "numeric", month: "numeric", day: "numeric",
+    timeZone: USER_TZ
+  }).formatToParts(date);
+  const get = type => parseInt(parts.find(p => p.type === type).value);
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
+// "Today", "Yesterday", or "Monday, April 28" — all resolved in local timezone
 function formatDayLabel(date){
+  const msgParts = localDateParts(date);
+
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const diff = (today - msgDay) / 86400000;
-  if(diff === 0) return "Today";
-  if(diff === 1) return "Yesterday";
-  return date.toLocaleDateString([], {weekday:"long", month:"long", day:"numeric"});
+  const todayParts = localDateParts(now);
+
+  const sameDate = (a, b) => a.year === b.year && a.month === b.month && a.day === b.day;
+
+  if(sameDate(msgParts, todayParts)) return "Today";
+
+  // Build yesterday's parts
+  const yd = new Date(now);
+  yd.setDate(yd.getDate() - 1);
+  const yesterdayParts = localDateParts(yd);
+  if(sameDate(msgParts, yesterdayParts)) return "Yesterday";
+
+  return date.toLocaleDateString(undefined, {
+    weekday: "long", month: "long", day: "numeric",
+    timeZone: USER_TZ
+  });
 }
 
-function sameDay(a, b){
-  return a.getFullYear()===b.getFullYear() &&
-         a.getMonth()===b.getMonth() &&
-         a.getDate()===b.getDate();
+// Compare two Dates by local calendar day (respects DST / timezone)
+function sameLocalDay(a, b){
+  const ap = localDateParts(a);
+  const bp = localDateParts(b);
+  return ap.year === bp.year && ap.month === bp.month && ap.day === bp.day;
 }
 
-function sameMinute(a, b){
-  return sameDay(a,b) &&
-         a.getHours()===b.getHours() &&
-         a.getMinutes()===b.getMinutes();
+// Compare two Dates: same local day AND same local hour+minute
+function sameLocalMinute(a, b){
+  if(!sameLocalDay(a, b)) return false;
+  const fmtHM = d => d.toLocaleTimeString(undefined, {
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: USER_TZ
+  });
+  return fmtHM(a) === fmtHM(b);
 }
 
 /* ── AVATAR INITIAL ── */
@@ -637,12 +683,14 @@ async function load(){
   let lastMsgTime = null;
 
   for(const m of data){
+    // Supabase returns UTC ISO strings — new Date() gives the correct UTC instant.
+    // All display calls below use USER_TZ to render in the user's local time.
     const date = new Date(m.created_at);
     const senderName = await nameOf(m.user_id);
     const read = m.read_by?.length > 1 ? " ✔✔" : " ✔";
 
-    // ── Day separator ──
-    if(!lastDate || !sameDay(lastDate, date)){
+    // ── Day separator (compared in local timezone) ──
+    if(!lastDate || !sameLocalDay(lastDate, date)){
       const sep = document.createElement("div");
       sep.className = "day-separator";
       const label = document.createElement("span");
@@ -653,15 +701,14 @@ async function load(){
       lastSenderID = null; // force new header after separator
     }
 
-    // Is this a continuation? (same sender, same minute)
+    // Continuation: same sender, same local minute
     const isContinuation = lastSenderID === m.user_id &&
-                           lastMsgTime && sameMinute(lastMsgTime, date);
+                           lastMsgTime && sameLocalMinute(lastMsgTime, date);
 
     const msgEl = document.createElement("div");
     msgEl.className = "msg" + (isContinuation ? " continuation" : "");
 
     if(isContinuation){
-      // Small hover timestamp on left
       const inlineTs = document.createElement("span");
       inlineTs.className = "inline-ts";
       inlineTs.textContent = formatTime(date);
@@ -673,7 +720,6 @@ async function load(){
       msgEl.appendChild(body);
 
     } else {
-      // Full message with avatar + name
       const avatar = document.createElement("div");
       avatar.className = "msg-avatar";
       avatar.textContent = initial(senderName);
