@@ -187,7 +187,7 @@ hr { border-color:#ffffff33; margin:16px 0; }
  <!-- Access Restricted -->
   <div id="NoAccess" class="panel hidden">
     <h2>Access Restricted</h2>
-    <p>We've detected suspicious activity on your account or we need to confirm some details. Please contact David physically or in our Discord Server. You will not be able to use DD Games until then.</p>
+    <p>We've detected suspicious activity on your account or we need to confirm some details. Please contact the Owner physically or in our Discord Server. You will not be able to use DD Games until then.</p>
     <button onclick="backMain()">←  Back</button>
 </div>
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
@@ -558,8 +558,11 @@ window.launchSite = function(){
     alert("You've been banned from DD Games for breaking the TOS.");
     return;
   }
-  if(!userRow.Access)
-  showPanel('NoAccess')
+  if(!userRow.Access){
+    showPanel('NoAccess');
+    return;
+  }
+  showPanel("LaunchMenu")
 }
 
 window.RequestForm = function(){
