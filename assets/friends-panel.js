@@ -30,39 +30,56 @@ const SUPABASE_KEY = "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d";
 const ABLY_KEY     = "f4iV1g.CdzItg:DMBDb8oONqNtkeH6dq25U4DYKAfd-7GQ6uEKXuqUJVw";
 const GUEST_ID     = "00000000-0000-0000-0000-000000000000";
 
+// ── PAGE LABEL HELPER ─────────────────────────────────────────────────────────
+// Converts a raw pathname stored in presence into a human-friendly string
+function friendlyPage(pathname) {
+  if (!pathname) return null;
+  if (pathname.includes("list.html"))    return "Browsing Games";
+  if (pathname.includes("chat.html"))    return "In Chat";
+  if (pathname.includes("main.html"))    return "On Home Page";
+  if (pathname.includes("leaderboard"))  return "Viewing Leaderboard";
+  if (pathname.includes("admin"))        return "Admin Panel";
+  const match = pathname.match(/\/games\/(.+)\.html/);
+  if (match) {
+    return "Playing " + decodeURIComponent(match[1])
+      .replace(/^0-/, "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return "On DD Games";
+}
+
+// Detect current page for presence upsert.
+// When running in an about:blank parent, read the iframe src instead.
+function detectCurrentGame() {
+  let path = location.pathname;
+  if (location.href === "about:blank" || location.protocol === "about:") {
+    try {
+      const iframe = document.querySelector("iframe");
+      if (iframe) path = new URL(iframe.src).pathname;
+    } catch(e) {}
+  }
+  return friendlyPage(path) || "On DD Games";
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 async function init() {
   const myID = localStorage.getItem("device_id");
   if (!myID || myID === GUEST_ID) return;
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  const supabase    = createClient(SUPABASE_URL, SUPABASE_KEY);
+  const currentGame = detectCurrentGame();
 
-  // Detect which game/page is active.
-  // When running in the about:blank parent, check the iframe's src instead.
-  function detectCurrentGame() {
-    let path = location.pathname;
-
-    // If we're in about:blank, try to read the iframe's location
+  // Raw pathname for presence (friends-panel reads this back via friendlyPage)
+  const currentPath = (() => {
     if (location.href === "about:blank" || location.protocol === "about:") {
       try {
         const iframe = document.querySelector("iframe");
-        if (iframe) path = new URL(iframe.src).pathname;
+        if (iframe) return new URL(iframe.src).pathname;
       } catch(e) {}
     }
-
-    const match = path.match(/\/games\/(.+)\.html/);
-    if (match) {
-      return decodeURIComponent(match[1])
-        .replace(/^0-/, "")
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, c => c.toUpperCase());
-    }
-    if (path.includes("list.html"))  return "Browsing Games";
-    if (path.includes("chat.html"))  return "In Chat";
-    return "On DD Games";
-  }
-
-  const currentGame = detectCurrentGame();
+    return location.pathname;
+  })();
 
   // ── Styles ────────────────────────────────────────────────────────────────
   const style = document.createElement("style");
@@ -92,167 +109,88 @@ async function init() {
     margin: 0;
   }
 
-  /* ── TAB ── */
   #fp-tab {
-    position: fixed;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
+    position: fixed; left: 0; top: 50%; transform: translateY(-50%);
     z-index: 10001;
     background: linear-gradient(180deg, var(--fp-accent), var(--fp-accent2));
-    color: white;
-    border: none;
-    border-radius: 0 10px 10px 0;
-    padding: 14px 8px;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
+    color: white; border: none; border-radius: 0 10px 10px 0;
+    padding: 14px 8px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
     box-shadow: 3px 0 16px rgba(79,142,247,0.35);
     transition: padding 0.2s, box-shadow 0.2s;
     font-family: 'DM Sans', sans-serif;
   }
-  #fp-tab:hover {
-    padding: 14px 12px;
-    box-shadow: 4px 0 22px rgba(79,142,247,0.5);
-  }
+  #fp-tab:hover { padding: 14px 12px; box-shadow: 4px 0 22px rgba(79,142,247,0.5); }
   #fp-tab-icon { font-size: 18px; line-height: 1; }
   #fp-tab-badge {
-    background: var(--fp-red);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-    min-width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 3px;
-    opacity: 0;
-    transform: scale(0.5);
+    background: var(--fp-red); color: white;
+    font-size: 10px; font-weight: 700; min-width: 16px; height: 16px;
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    padding: 0 3px; opacity: 0; transform: scale(0.5);
     transition: opacity 0.2s, transform 0.2s;
   }
   #fp-tab-badge.visible { opacity: 1; transform: scale(1); }
 
-  /* ── OVERLAY ── */
   #fp-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.45);
-    z-index: 10002;
-    opacity: 0;
-    pointer-events: none;
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    z-index: 10002; opacity: 0; pointer-events: none;
     transition: opacity 0.3s ease;
   }
   #fp-overlay.open { opacity: 1; pointer-events: auto; }
 
-  /* ── PANEL ── */
   #fp-panel {
-    position: fixed;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: var(--fp-w);
-    background: var(--fp-bg);
-    border-right: 1px solid var(--fp-border);
-    box-shadow: var(--fp-shadow);
-    z-index: 10003;
-    display: flex;
-    flex-direction: column;
-    font-family: 'DM Sans', sans-serif;
-    color: var(--fp-text);
+    position: fixed; left: 0; top: 0; bottom: 0; width: var(--fp-w);
+    background: var(--fp-bg); border-right: 1px solid var(--fp-border);
+    box-shadow: var(--fp-shadow); z-index: 10003;
+    display: flex; flex-direction: column;
+    font-family: 'DM Sans', sans-serif; color: var(--fp-text);
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow-x: hidden;
   }
   #fp-panel.open { transform: translateX(0); }
 
-  /* header */
   #fp-header {
-    display: flex;
-    align-items: center;
-    padding: 16px 14px 12px;
-    border-bottom: 1px solid var(--fp-border);
-    gap: 10px;
-    flex-shrink: 0;
-    background: var(--fp-surface);
+    display: flex; align-items: center; padding: 16px 14px 12px;
+    border-bottom: 1px solid var(--fp-border); gap: 10px;
+    flex-shrink: 0; background: var(--fp-surface);
   }
   #fp-header-icon { font-size: 20px; }
   #fp-header h3 {
-    font-family: 'Syne', sans-serif;
-    font-size: 16px;
-    font-weight: 700;
-    margin: 0;
-    flex: 1;
-    letter-spacing: 0.02em;
+    font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700;
+    margin: 0; flex: 1; letter-spacing: 0.02em;
   }
   #fp-close-btn {
-    background: transparent;
-    border: 1px solid var(--fp-border);
-    color: var(--fp-muted);
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
-    flex-shrink: 0;
+    background: transparent; border: 1px solid var(--fp-border);
+    color: var(--fp-muted); width: 28px; height: 28px; border-radius: 7px;
+    font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s; flex-shrink: 0;
   }
   #fp-close-btn:hover { background: var(--fp-border); color: var(--fp-text); }
 
-  /* tabs */
-  #fp-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--fp-border);
-    flex-shrink: 0;
-  }
+  #fp-tabs { display: flex; border-bottom: 1px solid var(--fp-border); flex-shrink: 0; }
   .fp-tab-btn {
-    flex: 1;
-    padding: 10px 0;
-    text-align: center;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--fp-muted);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
+    flex: 1; padding: 10px 0; text-align: center;
+    font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+    color: var(--fp-muted); background: none; border: none;
+    border-bottom: 2px solid transparent; cursor: pointer;
     transition: color 0.15s, border-color 0.15s;
   }
   .fp-tab-btn.active { color: var(--fp-accent); border-bottom-color: var(--fp-accent); }
   .fp-tab-btn:hover:not(.active) { color: var(--fp-text); }
   .fp-tab-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--fp-red);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-    min-width: 15px;
-    height: 15px;
-    border-radius: 8px;
-    padding: 0 3px;
-    margin-left: 4px;
-    vertical-align: middle;
-    opacity: 0;
-    transform: scale(0.5);
-    transition: opacity 0.2s, transform 0.2s;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--fp-red); color: white; font-size: 10px; font-weight: 700;
+    min-width: 15px; height: 15px; border-radius: 8px; padding: 0 3px;
+    margin-left: 4px; vertical-align: middle;
+    opacity: 0; transform: scale(0.5); transition: opacity 0.2s, transform 0.2s;
   }
   .fp-tab-count.visible { opacity: 1; transform: scale(1); }
 
-  /* body */
   #fp-body {
-    flex: 1;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--fp-border) transparent;
+    flex: 1; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--fp-border) transparent;
   }
   #fp-body::-webkit-scrollbar { width: 4px; }
   #fp-body::-webkit-scrollbar-thumb { background: var(--fp-border); border-radius: 2px; }
@@ -261,92 +199,60 @@ async function init() {
   .fp-pane.active { display: block; }
 
   .fp-section-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--fp-muted);
-    padding: 12px 14px 4px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--fp-muted); padding: 12px 14px 4px;
   }
 
-  /* friend row */
   .fp-friend {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 14px;
+    display: flex; align-items: center; gap: 10px; padding: 9px 14px;
     transition: background 0.15s;
   }
   .fp-friend:hover { background: var(--fp-surface); }
   .fp-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Syne', sans-serif;
-    font-size: 15px;
-    font-weight: 700;
-    color: white;
-    flex-shrink: 0;
-    position: relative;
+    width: 38px; height: 38px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+    color: white; flex-shrink: 0; position: relative;
   }
   .fp-dot {
-    position: absolute;
-    bottom: -2px; right: -2px;
-    width: 11px; height: 11px;
-    border-radius: 50%;
-    border: 2px solid var(--fp-bg);
+    position: absolute; bottom: -2px; right: -2px;
+    width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--fp-bg);
   }
   .fp-dot.online  { background: var(--fp-green); }
   .fp-dot.offline { background: var(--fp-muted); }
   .fp-friend-info { flex: 1; min-width: 0; }
   .fp-friend-name {
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 13px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .fp-friend-sub {
-    font-size: 11px;
-    color: var(--fp-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-top: 1px;
+    font-size: 11px; color: var(--fp-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
   }
   .fp-friend-sub.online { color: var(--fp-green); }
+  /* Page line — only shown when friend is online */
+  .fp-friend-page {
+    font-size: 10px; color: var(--fp-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 2px; opacity: 0.7;
+  }
   .fp-actions { display: flex; gap: 5px; }
   .fp-btn {
-    background: var(--fp-surface);
-    border: 1px solid var(--fp-border);
-    color: var(--fp-text);
-    width: 28px; height: 28px;
-    border-radius: 8px;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, border-color 0.15s;
-    flex-shrink: 0;
+    background: var(--fp-surface); border: 1px solid var(--fp-border);
+    color: var(--fp-text); width: 28px; height: 28px; border-radius: 8px;
+    font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s; flex-shrink: 0;
   }
   .fp-btn:hover { background: var(--fp-border); }
   .fp-btn.ok  { border-color: var(--fp-green); color: var(--fp-green); }
   .fp-btn.ok:hover  { background: rgba(34,212,122,0.12); }
-  .fp-btn.del { border-color: var(--fp-red);   color: var(--fp-red);   }
+  .fp-btn.del { border-color: var(--fp-red); color: var(--fp-red); }
   .fp-btn.del:hover { background: rgba(247,91,91,0.12); }
 
-  /* notif row */
   .fp-notif {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 14px;
-    cursor: pointer;
-    transition: background 0.15s;
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px;
+    cursor: pointer; transition: background 0.15s;
   }
   .fp-notif:hover  { background: var(--fp-surface); }
   .fp-notif.unread { background: rgba(79,142,247,0.07); }
@@ -355,116 +261,64 @@ async function init() {
   .fp-notif-title  { font-size: 13px; font-weight: 500; line-height: 1.35; }
   .fp-notif-time   { font-size: 11px; color: var(--fp-muted); margin-top: 2px; }
 
-  /* empty state */
-  .fp-empty {
-    text-align: center;
-    color: var(--fp-muted);
-    font-size: 13px;
-    padding: 36px 20px;
-  }
+  .fp-empty { text-align: center; color: var(--fp-muted); font-size: 13px; padding: 36px 20px; }
   .fp-empty-icon { font-size: 32px; margin-bottom: 10px; }
 
-  /* add friend bar */
   #fp-add-bar {
-    display: flex;
-    gap: 8px;
-    padding: 12px 14px;
-    border-top: 1px solid var(--fp-border);
-    flex-shrink: 0;
+    display: flex; gap: 8px; padding: 12px 14px;
+    border-top: 1px solid var(--fp-border); flex-shrink: 0;
     background: var(--fp-surface);
   }
   #fp-add-input {
-    flex: 1;
-    background: var(--fp-bg);
-    border: 1px solid var(--fp-border);
-    color: var(--fp-text);
-    padding: 8px 11px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    outline: none;
+    flex: 1; background: var(--fp-bg); border: 1px solid var(--fp-border);
+    color: var(--fp-text); padding: 8px 11px; border-radius: 9px;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none;
     transition: border-color 0.15s;
   }
   #fp-add-input:focus { border-color: var(--fp-accent); }
   #fp-add-input::placeholder { color: var(--fp-muted); }
   #fp-add-btn {
     background: linear-gradient(135deg, var(--fp-accent), var(--fp-accent2));
-    border: none;
-    color: white;
-    padding: 8px 13px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: opacity 0.15s;
+    border: none; color: white; padding: 8px 13px; border-radius: 9px;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: opacity 0.15s;
   }
   #fp-add-btn:hover { opacity: 0.85; }
 
-  /* quick DM bar */
   #fp-dm-bar {
-    display: none;
-    flex-wrap: wrap;
-    gap: 7px;
-    padding: 8px 14px;
-    border-top: 1px solid var(--fp-border);
-    flex-shrink: 0;
-    background: var(--fp-bg);
+    display: none; flex-wrap: wrap; gap: 7px; padding: 8px 14px;
+    border-top: 1px solid var(--fp-border); flex-shrink: 0; background: var(--fp-bg);
   }
   #fp-dm-bar.visible { display: flex; }
   #fp-dm-label { font-size: 11px; color: var(--fp-muted); flex-basis: 100%; }
   #fp-dm-input {
-    flex: 1;
-    background: var(--fp-surface);
-    border: 1px solid var(--fp-border);
-    color: var(--fp-text);
-    padding: 7px 10px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    outline: none;
+    flex: 1; background: var(--fp-surface); border: 1px solid var(--fp-border);
+    color: var(--fp-text); padding: 7px 10px; border-radius: 9px;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none;
     transition: border-color 0.15s;
   }
   #fp-dm-input:focus { border-color: var(--fp-accent); }
   #fp-dm-input::placeholder { color: var(--fp-muted); }
   #fp-dm-send {
-    background: var(--fp-accent);
-    border: none; color: white;
-    padding: 7px 12px;
-    border-radius: 9px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px; font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.15s;
+    background: var(--fp-accent); border: none; color: white;
+    padding: 7px 12px; border-radius: 9px;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: opacity 0.15s;
   }
   #fp-dm-send:hover { opacity: 0.85; }
 
-  /* ── TOASTS ── */
   #fp-toasts {
-    position: fixed;
-    top: 16px; right: 16px;
-    z-index: 11000;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    pointer-events: none;
-    width: 290px;
+    position: fixed; top: 16px; right: 16px; z-index: 11000;
+    display: flex; flex-direction: column; gap: 10px;
+    pointer-events: none; width: 290px;
   }
   .fp-toast {
-    background: var(--fp-surface);
-    border: 1px solid var(--fp-border);
-    border-radius: 13px;
-    padding: 12px 14px 0;
+    background: var(--fp-surface); border: 1px solid var(--fp-border);
+    border-radius: 13px; padding: 12px 14px 0;
     box-shadow: 0 6px 24px rgba(0,0,0,0.55);
-    font-family: 'DM Sans', sans-serif;
-    color: var(--fp-text);
-    pointer-events: auto;
-    cursor: pointer;
-    overflow: hidden;
-    position: relative;
-    transform: translateX(110%);
-    opacity: 0;
+    font-family: 'DM Sans', sans-serif; color: var(--fp-text);
+    pointer-events: auto; cursor: pointer; overflow: hidden; position: relative;
+    transform: translateX(110%); opacity: 0;
     transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease;
   }
   .fp-toast.in  { transform: translateX(0); opacity: 1; }
@@ -577,7 +431,7 @@ async function init() {
     return `${Math.floor(d/1440)}d ago`;
   }
 
-  function online(uid) {
+  function isOnline(uid) {
     const p = presence[uid];
     return p && (Date.now() - new Date(p.last_seen)) < 3 * 60 * 1000;
   }
@@ -600,7 +454,6 @@ async function init() {
     overlay.classList.add("open");
     loadAll();
   }
-
   function closePanel() {
     panelOpen = false;
     panel.classList.remove("open");
@@ -618,7 +471,6 @@ async function init() {
     document.querySelectorAll(".fp-pane").forEach(p => p.classList.toggle("active", p.id === `fp-pane-${name}`));
     if (name === "notifs") markNotifsRead();
   }
-
   document.querySelectorAll(".fp-tab-btn").forEach(b => {
     b.addEventListener("click", () => switchTab(b.dataset.tab));
   });
@@ -644,9 +496,7 @@ async function init() {
 
   async function loadFriends() {
     const { data } = await supabase
-      .from("friendships")
-      .select("requester_id, addressee_id")
-      .eq("status", "accepted")
+      .from("friendships").select("requester_id, addressee_id").eq("status", "accepted")
       .or(`requester_id.eq.${myID},addressee_id.eq.${myID}`);
     if (!data || !data.length) { friends = []; return; }
     const ids = data.map(r => r.requester_id === myID ? r.addressee_id : r.requester_id);
@@ -670,10 +520,8 @@ async function init() {
 
   async function loadNotifs() {
     const { data } = await supabase
-      .from("notifications").select("*")
-      .eq("user_id", myID)
-      .order("created_at", { ascending: false })
-      .limit(30);
+      .from("notifications").select("*").eq("user_id", myID)
+      .order("created_at", { ascending: false }).limit(30);
     notifs = data || [];
     unreadNotifs = notifs.filter(n => !n.read).length;
   }
@@ -681,8 +529,9 @@ async function init() {
   async function loadPresence() {
     const ids = friends.map(f => f.id);
     if (!ids.length) return;
+    // Fetch page + current_game + last_seen from presence
     const { data } = await supabase.from("presence")
-      .select("user_id, current_game, last_seen").in("user_id", ids);
+      .select("user_id, current_game, page, last_seen").in("user_id", ids);
     (data || []).forEach(p => { presence[p.user_id] = p; });
   }
 
@@ -693,8 +542,8 @@ async function init() {
       pane.innerHTML = `<div class="fp-empty"><div class="fp-empty-icon">👥</div>No friends yet.<br>Search for someone below!</div>`;
       return;
     }
-    const on  = friends.filter(f =>  online(f.id));
-    const off = friends.filter(f => !online(f.id));
+    const on  = friends.filter(f =>  isOnline(f.id));
+    const off = friends.filter(f => !isOnline(f.id));
     let html = "";
     if (on.length)  html += `<div class="fp-section-label">Online — ${on.length}</div>`  + on.map(f => friendRow(f, true)).join("");
     if (off.length) html += `<div class="fp-section-label">Offline</div>` + off.map(f => friendRow(f, false)).join("");
@@ -703,18 +552,27 @@ async function init() {
     pane.querySelectorAll("[data-rm]").forEach(b  => b.addEventListener("click", () => removeFriend(b.dataset.rm)));
   }
 
-  function friendRow(f, isOnline) {
+  function friendRow(f, online) {
     const p = presence[f.id] || {};
-    const sub = isOnline ? (p.current_game || "Online") : `Last seen ${ago(p.last_seen)}`;
+
+    // Status line: game name when online, last-seen when offline
+    const statusText = online
+      ? (p.current_game || "Online")
+      : `Last seen ${ago(p.last_seen)}`;
+
+    // Page line: only shown when online and a raw page path is available
+    const pageLabel = online && p.page ? friendlyPage(p.page) : null;
+
     return `
     <div class="fp-friend">
       <div class="fp-avatar" style="background:${grad(f.id)}">
         ${esc((f.name||"?")[0].toUpperCase())}
-        <div class="fp-dot ${isOnline ? "online" : "offline"}"></div>
+        <div class="fp-dot ${online ? "online" : "offline"}"></div>
       </div>
       <div class="fp-friend-info">
         <div class="fp-friend-name">${esc(f.name)}</div>
-        <div class="fp-friend-sub ${isOnline ? "online" : ""}">${esc(sub)}</div>
+        <div class="fp-friend-sub ${online ? "online" : ""}">${esc(statusText)}</div>
+        ${pageLabel ? `<div class="fp-friend-page">📍 ${esc(pageLabel)}</div>` : ""}
       </div>
       <div class="fp-actions">
         <button class="fp-btn" title="Quick message" data-msg="${f.id}" data-name="${esc(f.name)}">💬</button>
@@ -781,7 +639,7 @@ async function init() {
       case "friend_request":  return { icon: "👋", title: `<b>${esc(d.from_name)}</b> sent you a friend request` };
       case "friend_accepted": return { icon: "🤝", title: `<b>${esc(d.from_name)}</b> accepted your friend request` };
       case "friend_online":   return { icon: "🟢", title: `<b>${esc(d.name)}</b> is now online` };
-      case "quick_message":   return { icon: "💬", title: `<b>${esc(d.from_name)}</b>: ${esc(d.message)}` };
+      case "dm_message":      return { icon: "💬", title: `<b>${esc(d.from_name)}</b>: ${esc(d.preview)}` };
       default:                return { icon: "🔔", title: esc(n.type) };
     }
   }
@@ -793,7 +651,40 @@ async function init() {
     unreadNotifs = notifs.filter(x => !x.read).length;
     updateBadges();
     renderNotifs();
-    switchTab(type === "friend_request" ? "requests" : "friends");
+    if (type === "friend_request") {
+      switchTab("requests");
+    } else if (type === "dm_message") {
+      if (!location.pathname.includes("chat.html")) {
+        window.location.href = "/dd-games/assets/chat.html";
+      }
+    } else {
+      switchTab("friends");
+    }
+  }
+
+  // ── DM conversation helpers ───────────────────────────────────────────────
+  async function findDM(otherID) {
+    const { data: mine } = await supabase
+      .from("conversation_members").select("conversation_id").eq("user_id", myID);
+    for (const c of mine || []) {
+      const { data: members } = await supabase
+        .from("conversation_members").select("user_id").eq("conversation_id", c.conversation_id);
+      if (members?.length === 2 && members.some(m => m.user_id === otherID))
+        return c.conversation_id;
+    }
+    return null;
+  }
+
+  async function getOrCreateDM(otherID) {
+    const existing = await findDM(otherID);
+    if (existing) return existing;
+    const { data: newC } = await supabase
+      .from("conversations").insert({ is_public: false }).select().single();
+    await supabase.from("conversation_members").insert([
+      { conversation_id: newC.id, user_id: myID },
+      { conversation_id: newC.id, user_id: otherID }
+    ]);
+    return newC.id;
   }
 
   // ── Friend actions ────────────────────────────────────────────────────────
@@ -805,11 +696,8 @@ async function init() {
     if (!val) return;
 
     const { data: target, error } = await supabase
-      .from("users")
-      .select("user_id, Name")
-      .ilike('"Name"', val)
-      .limit(1)
-      .maybeSingle();
+      .from("users").select('user_id,"Name"')
+      .ilike('"Name"', val).limit(1).maybeSingle();
 
     if (error) {
       toast({ icon: "⚠️", title: "Error", body: "Could not connect to database.", color: "var(--fp-yellow)" });
@@ -838,8 +726,8 @@ async function init() {
 
     await supabase.from("friendships").insert({ requester_id: myID, addressee_id: target.user_id, status: "pending" });
 
-    const { data: me } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
-    const myName = me?.Name || "Someone";
+    const { data: meRow } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
+    const myName = meRow?.Name || "Someone";
 
     await supabase.from("notifications").insert({
       user_id: target.user_id, type: "friend_request",
@@ -853,14 +741,22 @@ async function init() {
 
   async function acceptReq(fid, uid, name) {
     await supabase.from("friendships").update({ status: "accepted" }).eq("id", fid);
-    const { data: me } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
-    const myName = me?.Name || "Someone";
+
+    const { data: meRow } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
+    const myName = meRow?.Name || "Someone";
+
+    // Notify the requester
     await supabase.from("notifications").insert({
       user_id: uid, type: "friend_accepted",
       data: { from_id: myID, from_name: myName }, read: false
     });
     ablyNotify(uid, { type: "friend_accepted", from_id: myID, from_name: myName });
+
+    // Auto-create a DM conversation between the two new friends
+    await getOrCreateDM(uid);
+
     await loadAll();
+    toast({ icon: "🤝", title: `Now friends with ${esc(name)}!`, color: "var(--fp-green)" });
   }
 
   async function declineReq(fid) {
@@ -882,7 +778,6 @@ async function init() {
     document.getElementById("fp-dm-bar").classList.add("visible");
     document.getElementById("fp-dm-input").focus();
   }
-
   function closeDm() {
     dmTargetID = null;
     document.getElementById("fp-dm-bar").classList.remove("visible");
@@ -898,13 +793,38 @@ async function init() {
   async function sendDm() {
     const msg = document.getElementById("fp-dm-input").value.trim();
     if (!msg || !dmTargetID) return;
-    const { data: me } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
-    const myName = me?.Name || "Someone";
-    await supabase.from("notifications").insert({
-      user_id: dmTargetID, type: "quick_message",
-      data: { from_id: myID, from_name: myName, message: msg }, read: false
+
+    const { data: meRow } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
+    const myName = meRow?.Name || "Someone";
+
+    // Get or create the real DM conversation so it appears in chat.html
+    const convoID = await getOrCreateDM(dmTargetID);
+
+    // Insert as a real chat message
+    await supabase.from("messages").insert({
+      conversation_id: convoID,
+      user_id: myID,
+      content: msg,
+      read_by: [myID]
     });
-    ablyNotify(dmTargetID, { type: "quick_message", from_id: myID, from_name: myName, message: msg });
+
+    // Only notify if recipient isn't already viewing this conversation
+    const { data: recipientPresence } = await supabase
+      .from("presence").select("active_conversation_id")
+      .eq("user_id", dmTargetID).maybeSingle();
+
+    if (recipientPresence?.active_conversation_id !== convoID) {
+      await supabase.from("notifications").insert({
+        user_id: dmTargetID, type: "dm_message",
+        data: { from_id: myID, from_name: myName, preview: msg.slice(0, 60), conversation_id: convoID },
+        read: false
+      });
+      ablyNotify(dmTargetID, {
+        type: "dm_message", from_id: myID, from_name: myName,
+        preview: msg.slice(0, 60), conversation_id: convoID
+      });
+    }
+
     document.getElementById("fp-dm-input").value = "";
     toast({ icon: "💬", title: "Sent!", body: `Message sent to ${esc(dmTargetName)}.`, color: "var(--fp-accent)" });
     closeDm();
@@ -951,13 +871,28 @@ async function init() {
 
   async function announceOnline() {
     if (!friends.length) await loadFriends();
-    const { data: me } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
+    const { data: meRow } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
+
+    // Store both the friendly label and the raw path so the panel can display either
     await supabase.from("presence").upsert(
-      { user_id: myID, current_game: currentGame, last_seen: new Date().toISOString() },
+      {
+        user_id: myID,
+        current_game: currentGame,
+        page: currentPath,
+        last_seen: new Date().toISOString()
+      },
       { onConflict: "user_id" }
     );
+
+    // Notify all friends that we came online
     for (const f of friends) {
-      ablyNotify(f.id, { type: "friend_online", from_id: myID, name: me?.Name || "Someone", current_game: currentGame });
+      ablyNotify(f.id, {
+        type: "friend_online",
+        from_id: myID,
+        name: meRow?.Name || "Someone",
+        current_game: currentGame,
+        page: currentPath
+      });
     }
   }
 
@@ -969,21 +904,37 @@ async function init() {
       updateBadges();
     });
 
-    if (data.type === "friend_request" || data.type === "friend_accepted" || data.type === "quick_message") {
-      toast(nMeta({ type: data.type, data }));
-      if (data.type === "friend_request")  loadRequests().then(renderRequests);
-      if (data.type === "friend_accepted") loadFriends().then(renderFriends);
-    } else if (data.type === "friend_online") {
-      presence[data.from_id] = { user_id: data.from_id, current_game: data.current_game, last_seen: new Date().toISOString() };
-      if (panelOpen) renderFriends();
+    switch (data.type) {
+      case "friend_request":
+        toast(nMeta({ type: data.type, data }));
+        loadRequests().then(renderRequests);
+        break;
+      case "friend_accepted":
+        toast(nMeta({ type: data.type, data }));
+        loadFriends().then(renderFriends);
+        break;
+      case "dm_message":
+        toast(nMeta({ type: data.type, data }));
+        break;
+      case "friend_online":
+        // Update presence cache optimistically
+        presence[data.from_id] = {
+          user_id: data.from_id,
+          current_game: data.current_game,
+          page: data.page,
+          last_seen: new Date().toISOString()
+        };
+        if (panelOpen) renderFriends();
+        toast(nMeta({ type: "friend_online", data }));
+        break;
     }
   }
 
   // ── Kick off ──────────────────────────────────────────────────────────────
   initAbly();
   updateBadges();
-  // Pre-load badges without needing panel open
-  loadRequests().then(() => { loadNotifs().then(updateBadges); });
+  // Pre-load badge counts without requiring the panel to be opened
+  loadRequests().then(() => loadNotifs().then(updateBadges));
 }
 
 // ── Run ───────────────────────────────────────────────────────────────────────

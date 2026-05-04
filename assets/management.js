@@ -6,7 +6,34 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const PREMIUM_PAGE_URL = "/dd-games/assets/premium-info.html";
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
+// ── Version check (hard refresh on update) ──────────────────
+async function checkVersion() {
+  try {
+    const res = await fetch("/dd-games/version.json?_=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) return;
+    const { version } = await res.json();
+    const stored = localStorage.getItem("dd_version");
 
+    if (stored && stored !== version) {
+      // Version changed, wipe caches and hard reload
+      localStorage.setItem("dd_version", version);
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+      location.reload(true);
+      return;
+    }
+
+    // First visit or same version — just store it
+    localStorage.setItem("dd_version", version);
+  } catch (e) {
+    console.warn("Version check failed:", e);
+  }
+}
+
+// Run before anything else
+await checkVersion();
 function getOrCreateDeviceID() {
   let id = localStorage.getItem("device_id");
   if (!id) {
