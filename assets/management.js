@@ -2,8 +2,8 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 
 const supabaseUrl = "https://lqfcntoldutgkzaboqfk.supabase.co";
 const supabaseKey = "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d";
-const supabase = createClient(supabaseUrl, supabaseKey);
-
+window.__supabase = window.__supabase || createClient(supabaseUrl, supabaseKey);
+const supabase = window.__supabase;
 const PREMIUM_PAGE_URL = "/dd-games/assets/premium-info.html";
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
 // ── Version check (hard refresh on update) ──────────────────

@@ -67,7 +67,7 @@ async function init() {
   const myID = localStorage.getItem("device_id");
   if (!myID || myID === GUEST_ID) return;
 
-  const supabase    = createClient(SUPABASE_URL, SUPABASE_KEY);
+  const supabase = window.__supabase || createClient(SUPABASE_URL, SUPABASE_KEY);
   const currentGame = detectCurrentGame();
 
   // Raw pathname for presence (friends-panel reads this back via friendlyPage)
