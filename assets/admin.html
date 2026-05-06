@@ -566,6 +566,78 @@
   #bulk-bar.show { display: flex; }
   #bulk-bar span { color: var(--accent); font-weight: 600; }
 
+  /* ── ACTIVE PLAYERS PANE ── */
+  .active-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+  .active-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: border-color 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .active-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--green), #16a34a);
+  }
+  .active-card:hover { border-color: var(--green); }
+  .active-card .avatar {
+    width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+  }
+  .active-card-info { flex: 1; min-width: 0; }
+  .active-card-name {
+    font-weight: 600; font-size: 14px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .active-card-page {
+    font-size: 12px; color: var(--green); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .active-card-time {
+    font-size: 11px; color: var(--muted); margin-top: 3px;
+    font-family: 'Space Mono', monospace;
+  }
+  .active-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    flex-shrink: 0;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(0.8); }
+  }
+  .active-header-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .active-header-bar h3 {
+    font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+  }
+  .active-header-bar .live-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(34,212,122,0.1); border: 1px solid rgba(34,212,122,0.25);
+    border-radius: 20px; padding: 4px 12px;
+    font-size: 12px; font-weight: 600; color: var(--green);
+  }
+  .active-empty {
+    text-align: center; padding: 60px 20px;
+    color: var(--muted); font-size: 14px;
+  }
+  .active-empty-icon { font-size: 40px; margin-bottom: 12px; }
+
   /* Scrollbar for main content */
   #content::-webkit-scrollbar { width: 5px; }
   #content::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
@@ -587,6 +659,10 @@
   </div>
   <div class="sb-item" data-pane="overview" onclick="nav(this)">
     <span class="icon">📊</span> Overview
+  </div>
+  <div class="sb-item" data-pane="active" onclick="nav(this)">
+    <span class="icon">🟢</span> Active Now
+    <span class="sb-badge" id="badge-active" style="display:none;background:var(--green)"></span>
   </div>
 
   <div class="sb-divider"></div>
@@ -764,6 +840,23 @@
           <div class="ql-label">Supabase Dashboard</div>
           <div class="ql-sub">Database, Edge Functions, auth</div>
         </a>
+      </div>
+    </div>
+
+    <!-- ACTIVE PLAYERS PANE -->
+    <div class="pane" id="pane-active">
+      <div class="active-header-bar">
+        <h3>🟢 Active Players</h3>
+        <div class="live-pill">
+          <div class="active-dot"></div>
+          <span id="active-count-label">Live</span>
+        </div>
+      </div>
+      <div id="active-grid" class="active-grid">
+        <div class="active-empty">
+          <div class="active-empty-icon">⏳</div>
+          Loading active players…
+        </div>
       </div>
     </div>
 
@@ -1002,17 +1095,120 @@ window.toast = function(msg, type = "blue") {
 };
 
 // ── Nav ────────────────────────────────────────────────
+let activeRefreshInterval = null;
+
 window.nav = function(el) {
   document.querySelectorAll(".sb-item").forEach(i => i.classList.remove("active"));
   el.classList.add("active");
   const pane = el.dataset.pane;
   document.querySelectorAll(".pane").forEach(p => p.classList.remove("active"));
   document.getElementById("pane-" + pane).classList.add("active");
-  const titles = { users: "Users", overview: "Overview", links: "Site Pages" };
+  const titles = { users: "Users", overview: "Overview", links: "Site Pages", active: "Active Now" };
   document.getElementById("topbar-title").textContent = titles[pane] || pane;
   document.getElementById("search").style.display = pane === "users" ? "" : "none";
+  // Stop any previous active-pane auto-refresh
+  if (activeRefreshInterval) { clearInterval(activeRefreshInterval); activeRefreshInterval = null; }
   if (pane === "overview") buildOverview();
+  if (pane === "active") {
+    loadActive();
+    // Refresh every 10 seconds while on this pane
+    activeRefreshInterval = setInterval(loadActive, 10000);
+  }
 };
+
+// ── Active Players ─────────────────────────────────────
+// "Active" = presence row with last_seen within the last 5 minutes
+const ACTIVE_THRESHOLD_MS = 5 * 60 * 1000;
+
+function friendlyPage(pathname) {
+  if (!pathname) return null;
+  if (pathname.includes("list.html"))   return "Browsing Game List";
+  if (pathname.includes("chat.html"))   return "In Chat";
+  if (pathname.includes("main.html"))   return "On Home Page";
+  if (pathname.includes("leaderboard")) return "Viewing Leaderboard";
+  if (pathname.includes("admin"))       return "Admin Panel";
+  const match = pathname.match(/\/games\/(.+)\.html/);
+  if (match) {
+    return "🎮 Playing: " + decodeURIComponent(match[1])
+      .replace(/^0-/, "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return "On DD Games";
+}
+
+async function loadActive() {
+  const cutoff = new Date(Date.now() - ACTIVE_THRESHOLD_MS).toISOString();
+
+  // Fetch presence rows updated recently
+  const { data: presenceRows, error } = await supabase
+    .from("presence")
+    .select("user_id, current_game, page, last_seen")
+    .gte("last_seen", cutoff)
+    .order("last_seen", { ascending: false });
+
+  if (error) { console.error("Active load error:", error); return; }
+
+  const rows = presenceRows || [];
+
+  // Update sidebar badge
+  const badge = document.getElementById("badge-active");
+  badge.style.display = rows.length > 0 ? "" : "none";
+  badge.textContent = rows.length;
+  document.getElementById("active-count-label").textContent =
+    `${rows.length} online`;
+
+  const grid = document.getElementById("active-grid");
+
+  if (!rows.length) {
+    grid.innerHTML = `
+      <div class="active-empty" style="grid-column:1/-1">
+        <div class="active-empty-icon">💤</div>
+        No players active right now.
+      </div>`;
+    return;
+  }
+
+  // Fetch matching user names in one query
+  const ids = rows.map(r => r.user_id);
+  const { data: users } = await supabase
+    .from("users")
+    .select('user_id,"Name",blocked,admin,premium')
+    .in("user_id", ids);
+
+  const userMap = {};
+  (users || []).forEach(u => { userMap[u.user_id] = u; });
+
+  grid.innerHTML = rows.map(p => {
+    const u = userMap[p.user_id] || {};
+    const name = u.Name || "(unknown)";
+    const initial = name[0].toUpperCase();
+    const label = p.current_game || friendlyPage(p.page) || "On DD Games";
+    const secsAgo = Math.floor((Date.now() - new Date(p.last_seen)) / 1000);
+    const timeLabel = secsAgo < 10 ? "just now"
+      : secsAgo < 60 ? `${secsAgo}s ago`
+      : `${Math.floor(secsAgo/60)}m ago`;
+
+    const roles = [];
+    if (u.admin)   roles.push(`<span class="badge purple" style="font-size:10px;padding:1px 6px;">Admin</span>`);
+    if (u.premium) roles.push(`<span class="badge blue"   style="font-size:10px;padding:1px 6px;">Premium</span>`);
+    if (u.blocked) roles.push(`<span class="badge red"    style="font-size:10px;padding:1px 6px;">Blocked</span>`);
+
+    return `
+      <div class="active-card" onclick="openModal('${esc(p.user_id)}')" title="Click to edit user">
+        <div class="avatar" style="background:${grad(p.user_id)}">${initial}</div>
+        <div class="active-card-info">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div class="active-card-name">${esc(name)}</div>
+            ${roles.join("")}
+          </div>
+          <div class="active-card-page">${esc(label)}</div>
+          <div class="active-card-time">Last seen ${timeLabel}</div>
+        </div>
+        <div class="active-dot"></div>
+      </div>`;
+  }).join("");
+}
 
 // ── Load ───────────────────────────────────────────────
 window.loadAll = async function() {
@@ -1339,6 +1535,8 @@ setInterval(loadAll, 15000);
 
 // ── Boot ───────────────────────────────────────────────
 loadAll();
+// Pre-populate the active badge without waiting for user to click the pane
+loadActive();
 </script>
 </body>
 </html>
