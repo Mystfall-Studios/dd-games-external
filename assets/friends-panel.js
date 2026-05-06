@@ -35,10 +35,10 @@ const GUEST_ID     = "00000000-0000-0000-0000-000000000000";
 function friendlyPage(pathname) {
   if (!pathname) return null;
   if (pathname.includes("list.html"))    return "Browsing Games";
-  if (pathname.includes("chat.html"))    return "In Chat";
-  if (pathname.includes("main.html"))    return "On Home Page";
-  if (pathname.includes("leaderboard"))  return "Viewing Leaderboard";
-  if (pathname.includes("admin"))        return "Admin Panel";
+  if (pathname.includes("chat.html"))    return "Currently Chatting";
+  if (pathname.includes("main.html"))    return "In the Launcher";
+  if (pathname.includes("leaderboard.html"))  return "Viewing Leaderboard";
+  if (pathname.includes("admin.html"))        return "In the Admin Panel";
   const match = pathname.match(/\/games\/(.+)\.html/);
   if (match) {
     return "Playing " + decodeURIComponent(match[1])
