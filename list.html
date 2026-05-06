@@ -338,6 +338,19 @@ body {
 #reqSuccessAnim strong {
   color: #e2e8f0;
 }
+
+/* ===== ADMIN QUICK LINK ===== */
+.admin-card {
+  background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(59,130,246,0.15));
+  border: 1px solid rgba(99,102,241,0.35) !important;
+}
+.admin-card:hover {
+  border-color: rgba(99,102,241,0.7) !important;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.25);
+}
+.admin-card h3 {
+  color: #a78bfa;
+}
 </style>
 </head>
 
@@ -408,7 +421,7 @@ body {
     <h3>🎮 Request a Game (WORKING)</h3>
   </div>
 
-  <div class="grid-item" onclick="openDiscord()">
+  <div class="grid-item" onclick="window.open('https://discord.gg/HqQDKw7UWZ')">
     <img src="/dd-games/assets/logo.png">
     <h3>💬 DD Games Official Discord (Fixed)</h3>
   </div>
@@ -422,6 +435,14 @@ body {
     <img src="/dd-games/assets/logo.png">
     <h3>💬 DD Games Chat</h3>
   </div>
+
+  <!-- Admin card injected here by JS if user is admin -->
+  <div class="grid-item admin-card" id="adminCard" style="display:none"
+       onclick="window.location.href='/dd-games/assets/admin.html'">
+    <img src="/dd-games/assets/logo.png">
+    <h3>⚙️ Admin Panel</h3>
+  </div>
+
 </div>
 <div class="controls">
   <input type="text" id="searchInput" placeholder="Search games...">
@@ -435,6 +456,7 @@ body {
 
 <script>
 let allGames = [];
+let isPremiumUser = false;
 
 const SUPABASE_URL = "https://lqfcntoldutgkzaboqfk.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d";
@@ -449,7 +471,7 @@ async function loadUser() {
 
   const url =
     SUPABASE_URL + "/rest/v1/users" +
-    "?select=premium" +
+    "?select=premium,admin" +
     "&user_id=eq." + encodeURIComponent(myID);
 
   const res = await fetch(url, {
@@ -462,13 +484,16 @@ async function loadUser() {
 
   if (!res.ok) {
     console.error("Supabase error:", await res.text());
-    return false;
+    return { premium: false, admin: false };
   }
 
   const data = await res.json();
-  if (!data || !data[0]) return false;
+  if (!data || !data[0]) return { premium: false, admin: false };
 
-  return data[0].premium === true;
+  return {
+    premium: data[0].premium === true,
+    admin:   data[0].admin   === true
+  };
 }
 
 /* ===== GAME REQUEST MODAL ===== */
@@ -567,7 +592,7 @@ function openDiscord() {
 }
 
 /* ===== RENDER GAMES ===== */
-function renderGames(isPremiumUser) {
+function renderGames() {
   const grid = document.getElementById("gameGrid");
   const search = document.getElementById("searchInput").value.toLowerCase();
   const sort = document.getElementById("sortSelect").value;
@@ -627,7 +652,13 @@ function renderGames(isPremiumUser) {
 
 /* ===== LOAD GAMES ===== */
 async function loadGames() {
-  const isPremiumUser = await loadUser();
+  const user = await loadUser();
+  isPremiumUser = user.premium;
+
+  // Show admin card if user is an admin
+  if (user.admin) {
+    document.getElementById("adminCard").style.display = "";
+  }
 
   const res = await fetch("/dd-games/assets/games.json?v=" + Date.now(), {
     cache: "no-store"
@@ -636,11 +667,11 @@ async function loadGames() {
   const data = await res.json();
   allGames = data;
 
-  renderGames(isPremiumUser);
+  renderGames();
 }
 
-document.getElementById("searchInput").addEventListener("input", loadGames);
-document.getElementById("sortSelect").addEventListener("change", loadGames);
+document.getElementById("searchInput").addEventListener("input", renderGames);
+document.getElementById("sortSelect").addEventListener("change", renderGames);
 
 loadGames();
 

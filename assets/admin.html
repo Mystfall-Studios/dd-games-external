@@ -910,6 +910,44 @@ const supabase = createClient(
   "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d"
 );
 
+// ── Admin auth gate ────────────────────────────────────
+(async () => {
+  const myID = localStorage.getItem("device_id");
+  const GUEST_ID = "00000000-0000-0000-0000-000000000000";
+
+  let isAdmin = false;
+
+  if (myID && myID !== GUEST_ID) {
+    const { data } = await supabase
+      .from("users")
+      .select("admin")
+      .eq("user_id", myID)
+      .maybeSingle();
+    isAdmin = data?.admin === true;
+  }
+
+  if (!isAdmin) {
+    document.body.innerHTML = `
+      <div style="
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        height:100vh; background:#050810; color:#e4eaf8;
+        font-family:'DM Sans',sans-serif; text-align:center; gap:16px;
+      ">
+        <div style="font-size:56px">🚫</div>
+        <h1 style="font-size:22px; font-weight:700; margin:0">Access Denied</h1>
+        <p style="color:#4a5878; font-size:14px; margin:0">
+          You don't have permission to view this page.
+        </p>
+        <a href="/dd-games/list.html" style="
+          margin-top:8px; padding:10px 24px; border-radius:9px;
+          background:#3b82f6; color:white; text-decoration:none;
+          font-size:14px; font-weight:600;
+        ">← Back to Site</a>
+      </div>`;
+    throw new Error("Access denied — not an admin.");
+  }
+})();
+
 // ── State ──────────────────────────────────────────────
 let allUsers    = [];
 let editTarget  = null;
