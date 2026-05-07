@@ -129,44 +129,61 @@ async function init() {
       }
     }
 
-    // ── Update visit info ────────────────────────────────
-    await supabase.from("users").update({
-      ip,
-      browser: info.browser,
-      os: info.os,
-      device: info.device,
-      page: info.page,
-      last_seen: nowISO(),
-      visit_count: (existingUser.visit_count || 0) + 1
-    }).eq("user_id", deviceID);
-  }
+
+  // ── Update visit info ────────────────────────────────
+await supabase.from("users").update({
+  ip,
+  browser: info.browser,
+  os: info.os,
+  device: info.device,
+  page: info.page,
+  last_seen: nowISO(),
+  visit_count: (existingUser.visit_count || 0) + 1
+}).eq("user_id", deviceID);
+
+// ── Upsert presence so Active Now sees ALL users ──────
+await supabase.from("presence").upsert(
+  {
+    user_id: deviceID,
+    page: info.page,
+    current_game: null,
+    last_seen: nowISO()
+  },
+  { onConflict: "user_id" }
+);
 
   // ── Playtime timer (every minute) ──────────────────────
   setInterval(async () => {
-    const { data, error } = await supabase
-      .from("users")
-      .select('"Playtime", blocked, premium')
-      .eq("user_id", deviceID).maybeSingle();
+  const { data, error } = await supabase
+    .from("users")
+    .select('"Playtime", blocked, premium')
+    .eq("user_id", deviceID).maybeSingle();
 
-    if (error) { console.error("Playtime fetch error:", error); return; }
-    if (!data) return;
+  if (error) { console.error("Playtime fetch error:", error); return; }
+  if (!data) return;
 
-    if (data.blocked) {
-      document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
-      return;
-    }
+  if (data.blocked) {
+    document.body.innerHTML = "<h1>You have been blocked from DD Games</h1>";
+    return;
+  }
 
-    if (pageIsPremium() && data.premium !== true) {
-      window.location.href = PREMIUM_PAGE_URL;
-      return;
-    }
+  if (pageIsPremium() && data.premium !== true) {
+    window.location.href = PREMIUM_PAGE_URL;
+    return;
+  }
 
-    await supabase.from("users").update({
-      Playtime: (data["Playtime"] || 0) + 1,
-      last_seen: nowISO()
-    }).eq("user_id", deviceID);
+  await supabase.from("users").update({
+    Playtime: (data["Playtime"] || 0) + 1,
+    last_seen: nowISO()
+  }).eq("user_id", deviceID);
 
-  }, 60000);
+  // Keep presence fresh so Active Now stays accurate
+  await supabase.from("presence").upsert(
+    { user_id: deviceID, page: info.page, last_seen: nowISO() },
+    { onConflict: "user_id" }
+  );
+
+}, 60000);
 
   // ── Friends panel (inject on every page) ───────────────
   function loadFriendsPanel() {
@@ -191,4 +208,5 @@ if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
+}
 }
