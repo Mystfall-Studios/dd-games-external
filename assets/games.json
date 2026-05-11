@@ -382,5 +382,17 @@
     "image": "/dd-games/assets/images/1v1lol.png",
     "link": "/dd-games/games/0-1v1.lol.html",
     "premium": false
+},
+{
+"name": "Granny",
+    "image": "/dd-games/assets/images/granny.png",
+    "link": "/dd-games/games/0-granny.html",
+    "premium": false
+},
+{
+"name": "Get Yoked",
+    "image": "/dd-games/assets/images/get-yoked.png",
+    "link": "/dd-games/games/0-get-yoked.html",
+    "premium": false
 }
 ]
