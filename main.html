@@ -176,6 +176,7 @@ hr { border-color:#ffffff33; margin:16px 0; }
     <button class="secondary" onclick="showPanel('account')">← Cancel</button>
     <p id="mergeError" style="color:#f87171;margin-top:8px;display:none;"></p>
   </div>
+
   <!-- Launch Menu -->
   <div id="LaunchMenu" class="panel hidden">
     <h2>Launch Site</h2>
@@ -183,13 +184,15 @@ hr { border-color:#ffffff33; margin:16px 0; }
     <button onclick="OpenLink()">Open in about:blank (Hides from History)</button>
     <button onclick="window.location.href='/dd-games/list.html'">Open Normally (Exposes to History)</button>
     <button class="secondary" onclick="backMain()">←  Back</button>
-</div>
- <!-- Access Restricted -->
+  </div>
+
+  <!-- Access Restricted -->
   <div id="NoAccess" class="panel hidden">
     <h2>Access Restricted</h2>
     <p>We've detected suspicious activity on your account or we need to confirm some details. Please contact the Owner physically or in our Discord Server. You will not be able to use DD Games until then.</p>
     <button onclick="backMain()">←  Back</button>
-</div>
+  </div>
+
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script type="module">
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
@@ -201,33 +204,46 @@ const supabase = createClient(
 
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
 
-const PANELS = ["loading","setup","linkEntry","main","account","generateCode","mergeWarning"];
+const PANELS = ["loading","setup","linkEntry","main","account","generateCode","mergeWarning","LaunchMenu","NoAccess"];
 
-// Safe element getter — never throws on null
 function el(id){ return document.getElementById(id); }
-
-// Safe text setter — no-ops if element doesn't exist yet
 function setText(id, val){
   const node = el(id);
   if (node) node.textContent = val;
 }
+
 window.OpenLink = function() {
   var win = window.open();
   win.document.body.style.margin = '0';
   win.document.body.style.height = '100vh';
 
-  // Inject Ably into the about:blank parent first, then the friends panel
+  // 1. Inject Ably
   var ably = win.document.createElement('script');
   ably.src = 'https://cdn.ably.io/lib/ably.min-1.js';
   ably.onload = function() {
-    var panel = win.document.createElement('script');
-    panel.type = 'module';
-    panel.src = '/dd-games/assets/friends-panel.js';
-    win.document.head.appendChild(panel);
+
+    // 2. Inject Supabase (needed by management.js and friends-panel.js)
+    var supa = win.document.createElement('script');
+    supa.type = 'module';
+    supa.textContent = `
+      import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+      window.__supabase = createClient(
+        "https://lqfcntoldutgkzaboqfk.supabase.co",
+        "sb_publishable_Zs0J8nka95CzLZJ7BWqEAg_sqD5Wr0d"
+      );
+    `;
+    win.document.head.appendChild(supa);
+
+    // 3. Inject management.js so playtime tracking, blocked checks, and
+    //    friends panel all run in the cloak window just like any other page
+    var mgmt = win.document.createElement('script');
+    mgmt.type = 'module';
+    mgmt.src = '/dd-games/assets/management.js';
+    win.document.head.appendChild(mgmt);
   };
   win.document.head.appendChild(ably);
 
-  // Create the iframe
+  // 4. Create the iframe
   var iframe = win.document.createElement('iframe');
   iframe.style.border = 'none';
   iframe.style.width = '100%';
@@ -238,6 +254,7 @@ window.OpenLink = function() {
 
   window.location.href = 'https://google.com';
 }
+
 window.showPanel = function(id){
   PANELS.forEach(p => {
     const node = el(p);
@@ -467,19 +484,16 @@ window.continueAsGuest = function(){
   showMain();
 }
 
-// Clock interval — stored so it can be cleared if showMain is ever called again
 let clockInterval = null;
 
 function showMain(){
   showPanel("main");
 
-  // Guard: elements must exist before we touch them
-  const welcomeEl   = el("welcome");
+  const welcomeEl    = el("welcome");
   const accountBtnEl = el("accountBtn");
   if (welcomeEl)    welcomeEl.textContent = "Welcome, " + (userRow?.Name || "");
   if (accountBtnEl) accountBtnEl.textContent = isGuest() ? "Create Account" : "Account";
 
-  // Clear any previous clock interval before starting a new one
   if (clockInterval) clearInterval(clockInterval);
   clockInterval = setInterval(() => {
     const timeEl = el("time");

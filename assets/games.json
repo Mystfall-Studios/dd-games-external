@@ -394,5 +394,11 @@
     "image": "/dd-games/assets/images/get-yoked.png",
     "link": "/dd-games/games/0-get-yoked.html",
     "premium": false
+},
+{
+"name": "Aquapark.io",
+    "image": "/dd-games/assets/images/aquapark.png",
+    "link": "/dd-games/games/0-aquapark.io.html",
+    "premium": false
 }
 ]

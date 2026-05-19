@@ -31,14 +31,13 @@ const ABLY_KEY     = "f4iV1g.CdzItg:DMBDb8oONqNtkeH6dq25U4DYKAfd-7GQ6uEKXuqUJVw"
 const GUEST_ID     = "00000000-0000-0000-0000-000000000000";
 
 // ── PAGE LABEL HELPER ─────────────────────────────────────────────────────────
-// Converts a raw pathname stored in presence into a human-friendly string
 function friendlyPage(pathname) {
   if (!pathname) return null;
-  if (pathname.includes("list.html"))    return "Browsing Games";
-  if (pathname.includes("chat.html"))    return "Currently Chatting";
-  if (pathname.includes("main.html"))    return "In the Launcher";
-  if (pathname.includes("leaderboard.html"))  return "Viewing Leaderboard";
-  if (pathname.includes("admin.html"))        return "In the Admin Panel";
+  if (pathname.includes("list.html"))       return "Browsing Games";
+  if (pathname.includes("chat.html"))       return "Currently Chatting";
+  if (pathname.includes("main.html"))       return "In the Launcher";
+  if (pathname.includes("leaderboard.html"))return "Viewing Leaderboard";
+  if (pathname.includes("admin.html"))      return "In the Admin Panel";
   const match = pathname.match(/\/games\/(.+)\.html/);
   if (match) {
     return "Playing " + decodeURIComponent(match[1])
@@ -49,8 +48,6 @@ function friendlyPage(pathname) {
   return "On DD Games";
 }
 
-// Detect current page for presence upsert.
-// When running in an about:blank parent, read the iframe src instead.
 function detectCurrentGame() {
   let path = location.pathname;
   if (location.href === "about:blank" || location.protocol === "about:") {
@@ -70,7 +67,6 @@ async function init() {
   const supabase = window.__supabase || createClient(SUPABASE_URL, SUPABASE_KEY);
   const currentGame = detectCurrentGame();
 
-  // Raw pathname for presence (friends-panel reads this back via friendlyPage)
   const currentPath = (() => {
     if (location.href === "about:blank" || location.protocol === "about:") {
       try {
@@ -230,7 +226,6 @@ async function init() {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
   }
   .fp-friend-sub.online { color: var(--fp-green); }
-  /* Page line — only shown when friend is online */
   .fp-friend-page {
     font-size: 10px; color: var(--fp-muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -263,6 +258,13 @@ async function init() {
 
   .fp-empty { text-align: center; color: var(--fp-muted); font-size: 13px; padding: 36px 20px; }
   .fp-empty-icon { font-size: 32px; margin-bottom: 10px; }
+
+  /* Ably status indicator shown in header when not yet connected */
+  #fp-ably-status {
+    font-size: 10px; color: var(--fp-muted); padding: 4px 14px 0;
+    display: none;
+  }
+  #fp-ably-status.visible { display: block; }
 
   #fp-add-bar {
     display: flex; gap: 8px; padding: 12px 14px;
@@ -349,6 +351,8 @@ async function init() {
         <button id="fp-close-btn" title="Close">✕</button>
       </div>
 
+      <div id="fp-ably-status">⏳ Connecting for live updates…</div>
+
       <div id="fp-tabs">
         <button class="fp-tab-btn active" data-tab="friends">Friends</button>
         <button class="fp-tab-btn" data-tab="requests">
@@ -395,6 +399,8 @@ async function init() {
   let unreadNotifs = 0;
   let unreadReqs   = 0;
   let ablyClient   = null;
+  let ablyReady    = false;      // true once Ably connection is established
+  let pollInterval = null;       // fallback polling interval, cleared once Ably connects
 
   const tabEl      = document.getElementById("fp-tab");
   const tabBadge   = document.getElementById("fp-tab-badge");
@@ -403,6 +409,7 @@ async function init() {
   const toastsEl   = document.getElementById("fp-toasts");
   const reqCount   = document.getElementById("fp-req-count");
   const notifCount = document.getElementById("fp-notif-count");
+  const ablyStatus = document.getElementById("fp-ably-status");
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function esc(s) {
@@ -529,10 +536,36 @@ async function init() {
   async function loadPresence() {
     const ids = friends.map(f => f.id);
     if (!ids.length) return;
-    // Fetch page + current_game + last_seen from presence
     const { data } = await supabase.from("presence")
       .select("user_id, current_game, page, last_seen").in("user_id", ids);
     (data || []).forEach(p => { presence[p.user_id] = p; });
+  }
+
+  // ── Polling fallback ──────────────────────────────────────────────────────
+  // Runs every 15 seconds until Ably connects.
+  // Once Ably is up this is stopped — real-time events take over.
+  // This ensures notifications and friend requests that arrived while the
+  // tab was closed (or before Ably connected) are always visible on page load.
+  function startPolling() {
+    // Immediate poll so badges are accurate right away
+    loadRequests().then(() => loadNotifs().then(updateBadges));
+
+    pollInterval = setInterval(async () => {
+      if (ablyReady) {
+        // Ably is connected — stop polling, it's redundant
+        clearInterval(pollInterval);
+        pollInterval = null;
+        ablyStatus.classList.remove("visible");
+        return;
+      }
+      await loadRequests();
+      await loadNotifs();
+      updateBadges();
+      if (panelOpen) {
+        renderRequests();
+        renderNotifs();
+      }
+    }, 15000);
   }
 
   // ── Render: Friends ───────────────────────────────────────────────────────
@@ -554,13 +587,9 @@ async function init() {
 
   function friendRow(f, online) {
     const p = presence[f.id] || {};
-
-    // Status line: game name when online, last-seen when offline
     const statusText = online
       ? (p.current_game || "Online")
       : `Last seen ${ago(p.last_seen)}`;
-
-    // Page line: only shown when online and a raw page path is available
     const pageLabel = online && p.page ? friendlyPage(p.page) : null;
 
     return `
@@ -745,16 +774,13 @@ async function init() {
     const { data: meRow } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
     const myName = meRow?.Name || "Someone";
 
-    // Notify the requester
     await supabase.from("notifications").insert({
       user_id: uid, type: "friend_accepted",
       data: { from_id: myID, from_name: myName }, read: false
     });
     ablyNotify(uid, { type: "friend_accepted", from_id: myID, from_name: myName });
 
-    // Auto-create a DM conversation between the two new friends
     await getOrCreateDM(uid);
-
     await loadAll();
     toast({ icon: "🤝", title: `Now friends with ${esc(name)}!`, color: "var(--fp-green)" });
   }
@@ -797,10 +823,8 @@ async function init() {
     const { data: meRow } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
     const myName = meRow?.Name || "Someone";
 
-    // Get or create the real DM conversation so it appears in chat.html
     const convoID = await getOrCreateDM(dmTargetID);
 
-    // Insert as a real chat message
     await supabase.from("messages").insert({
       conversation_id: convoID,
       user_id: myID,
@@ -808,7 +832,6 @@ async function init() {
       read_by: [myID]
     });
 
-    // Only notify if recipient isn't already viewing this conversation
     const { data: recipientPresence } = await supabase
       .from("presence").select("active_conversation_id")
       .eq("user_id", dmTargetID).maybeSingle();
@@ -859,21 +882,47 @@ async function init() {
 
   // ── Ably ──────────────────────────────────────────────────────────────────
   function initAbly() {
-    if (typeof Ably === "undefined") return;
+    if (typeof Ably === "undefined") {
+      // Ably script not available — polling will keep running until it is
+      console.warn("Friends Panel: Ably not available, staying on polling fallback.");
+      return;
+    }
+
+    ablyStatus.classList.add("visible");
+
     ablyClient = new Ably.Realtime({ key: ABLY_KEY, clientId: myID });
     ablyClient.channels.get(`presence:${myID}`).subscribe(msg => handleAbly(msg.data));
-    ablyClient.connection.once("connected", announceOnline);
+
+    ablyClient.connection.once("connected", () => {
+      ablyReady = true;
+      ablyStatus.classList.remove("visible");
+      // Stop polling now that real-time is live
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      announceOnline();
+    });
+
+    // If Ably fails to connect within 10s, keep polling silently
+    setTimeout(() => {
+      if (!ablyReady) {
+        ablyStatus.classList.remove("visible");
+        console.warn("Friends Panel: Ably connection timeout, continuing on polling.");
+      }
+    }, 10000);
   }
 
   function ablyNotify(targetID, payload) {
-    if (ablyClient) ablyClient.channels.get(`presence:${targetID}`).publish("notify", payload);
+    if (ablyClient && ablyReady) {
+      ablyClient.channels.get(`presence:${targetID}`).publish("notify", payload);
+    }
   }
 
   async function announceOnline() {
     if (!friends.length) await loadFriends();
     const { data: meRow } = await supabase.from("users").select('"Name"').eq("user_id", myID).maybeSingle();
 
-    // Store both the friendly label and the raw path so the panel can display either
     await supabase.from("presence").upsert(
       {
         user_id: myID,
@@ -884,7 +933,6 @@ async function init() {
       { onConflict: "user_id" }
     );
 
-    // Notify all friends that we came online
     for (const f of friends) {
       ablyNotify(f.id, {
         type: "friend_online",
@@ -917,7 +965,6 @@ async function init() {
         toast(nMeta({ type: data.type, data }));
         break;
       case "friend_online":
-        // Update presence cache optimistically
         presence[data.from_id] = {
           user_id: data.from_id,
           current_game: data.current_game,
@@ -931,10 +978,11 @@ async function init() {
   }
 
   // ── Kick off ──────────────────────────────────────────────────────────────
+  // Start polling immediately so badges are populated before Ably connects
+  startPolling();
+  // Then try to establish real-time connection
   initAbly();
   updateBadges();
-  // Pre-load badge counts without requiring the panel to be opened
-  loadRequests().then(() => loadNotifs().then(updateBadges));
 }
 
 // ── Run ───────────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ window.__supabase = window.__supabase || createClient(supabaseUrl, supabaseKey);
 const supabase = window.__supabase;
 const PREMIUM_PAGE_URL = "/dd-games/assets/premium-info.html";
 const GUEST_ID = "00000000-0000-0000-0000-000000000000";
+
 // ── Version check (hard refresh on update) ──────────────────
 async function checkVersion() {
   try {
@@ -15,7 +16,6 @@ async function checkVersion() {
     const stored = localStorage.getItem("dd_version");
 
     if (stored && stored !== version) {
-      // Version changed, wipe caches and hard reload
       localStorage.setItem("dd_version", version);
       if ("caches" in window) {
         const keys = await caches.keys();
@@ -25,15 +25,14 @@ async function checkVersion() {
       return;
     }
 
-    // First visit or same version — just store it
     localStorage.setItem("dd_version", version);
   } catch (e) {
     console.warn("Version check failed:", e);
   }
 }
 
-// Run before anything else
 await checkVersion();
+
 function getOrCreateDeviceID() {
   let id = localStorage.getItem("device_id");
   if (!id) {
@@ -56,7 +55,6 @@ function pageIsPremium() {
   return document.body.dataset.premium === "true";
 }
 
-// Always returns a clean UTC ISO string for Supabase timestamptz columns
 function nowISO() {
   return new Date().toISOString();
 }
@@ -70,7 +68,7 @@ async function init() {
     if (pageIsPremium()) {
       window.location.href = PREMIUM_PAGE_URL;
     }
-    return; // guests skip everything below, no throw
+    return;
   }
 
   // ── IP ─────────────────────────────────────────────────
@@ -109,19 +107,19 @@ async function init() {
 
   } else {
 
-    // ── Blocked check ────────────────────────────────────
+    // ── Blocked check ──────────────────────────────────
     if (existingUser.blocked) {
       document.body.innerHTML = "<h1>You have been blocked for breaking DD Games' TOS.</h1>";
       return;
     }
 
-    // ── Premium page check ───────────────────────────────
+    // ── Premium page check ─────────────────────────────
     if (pageIsPremium() && existingUser.premium !== true) {
       window.location.href = PREMIUM_PAGE_URL;
       return;
     }
 
-    // ── Name check — redirect to setup if missing ────────
+    // ── Name check — redirect to setup if missing ──────
     if (!existingUser.Name || existingUser.Name.trim() === "") {
       if (!location.pathname.endsWith("main.html")) {
         window.location.href = "/dd-games/main.html";
@@ -129,84 +127,93 @@ async function init() {
       }
     }
 
+    // ── Update visit info ──────────────────────────────
+    await supabase.from("users").update({
+      ip,
+      browser: info.browser,
+      os: info.os,
+      device: info.device,
+      page: info.page,
+      last_seen: nowISO(),
+      visit_count: (existingUser.visit_count || 0) + 1
+    }).eq("user_id", deviceID);
 
-  // ── Update visit info ────────────────────────────────
-await supabase.from("users").update({
-  ip,
-  browser: info.browser,
-  os: info.os,
-  device: info.device,
-  page: info.page,
-  last_seen: nowISO(),
-  visit_count: (existingUser.visit_count || 0) + 1
-}).eq("user_id", deviceID);
+    // ── Upsert presence so Active Now sees ALL users ───
+    await supabase.from("presence").upsert(
+      {
+        user_id: deviceID,
+        page: info.page,
+        current_game: null,
+        last_seen: nowISO()
+      },
+      { onConflict: "user_id" }
+    );
 
-// ── Upsert presence so Active Now sees ALL users ──────
-await supabase.from("presence").upsert(
-  {
-    user_id: deviceID,
-    page: info.page,
-    current_game: null,
-    last_seen: nowISO()
-  },
-  { onConflict: "user_id" }
-);
+    // ── Playtime timer (every minute) ──────────────────
+    setInterval(async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select('"Playtime", blocked, premium')
+        .eq("user_id", deviceID).maybeSingle();
 
-  // ── Playtime timer (every minute) ──────────────────────
-  setInterval(async () => {
-  const { data, error } = await supabase
-    .from("users")
-    .select('"Playtime", blocked, premium')
-    .eq("user_id", deviceID).maybeSingle();
+      if (error) { console.error("Playtime fetch error:", error); return; }
+      if (!data) return;
 
-  if (error) { console.error("Playtime fetch error:", error); return; }
-  if (!data) return;
+      if (data.blocked) {
+        document.body.innerHTML = "<h1>You have been blocked from DD Games</h1>";
+        return;
+      }
 
-  if (data.blocked) {
-    document.body.innerHTML = "<h1>You have been blocked from DD Games</h1>";
-    return;
-  }
+      if (pageIsPremium() && data.premium !== true) {
+        window.location.href = PREMIUM_PAGE_URL;
+        return;
+      }
 
-  if (pageIsPremium() && data.premium !== true) {
-    window.location.href = PREMIUM_PAGE_URL;
-    return;
-  }
+      await supabase.from("users").update({
+        Playtime: (data["Playtime"] || 0) + 1,
+        last_seen: nowISO()
+      }).eq("user_id", deviceID);
 
-  await supabase.from("users").update({
-    Playtime: (data["Playtime"] || 0) + 1,
-    last_seen: nowISO()
-  }).eq("user_id", deviceID);
+    }, 60000);
 
-  // Keep presence fresh so Active Now stays accurate
-  await supabase.from("presence").upsert(
-    { user_id: deviceID, page: info.page, last_seen: nowISO() },
-    { onConflict: "user_id" }
-  );
+    // ── Presence heartbeat (every 2 minutes, independent of playtime) ──
+    // Keeps Active Now accurate for idle users who aren't accumulating playtime
+    setInterval(async () => {
+      await supabase.from("presence").upsert(
+        {
+          user_id: deviceID,
+          page: info.page,
+          last_seen: nowISO()
+        },
+        { onConflict: "user_id" }
+      );
+    }, 120000);
 
-}, 60000);
+    // ── Friends panel (inject on every page) ───────────
+    function loadFriendsPanel() {
+      if (window.__FP_LOADED) return;
+      import("/dd-games/assets/friends-panel.js").catch(e => {
+        console.warn("Friends panel failed to load:", e);
+      });
+    }
 
-  // ── Friends panel (inject on every page) ───────────────
-  function loadFriendsPanel() {
-    import("/dd-games/assets/friends-panel.js").catch(e => {
-      console.warn("Friends panel failed to load:", e);
-    });
-  }
+    if (typeof Ably !== "undefined") {
+      loadFriendsPanel();
+    } else {
+      const ablyScript = document.createElement("script");
+      ablyScript.src = "https://cdn.ably.io/lib/ably.min-1.js";
+      ablyScript.onload = loadFriendsPanel;
+      ablyScript.onerror = () => console.warn("Ably failed to load, friends panel skipped.");
+      document.head.appendChild(ablyScript);
+    }
 
-  if (typeof Ably !== "undefined") {
-    loadFriendsPanel();
-  } else {
-    const ablyScript = document.createElement("script");
-    ablyScript.src = "https://cdn.ably.io/lib/ably.min-1.js";
-    ablyScript.onload = loadFriendsPanel;
-    ablyScript.onerror = () => console.warn("Ably failed to load, friends panel skipped.");
-    document.head.appendChild(ablyScript);
-  }
-}
+  } // end else (existingUser)
+
+} // end init()
 
 // ── Entry point ─────────────────────────────────────────
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
-}
 }

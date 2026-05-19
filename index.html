@@ -155,27 +155,30 @@
   </style>
 </head>
 <script>
- function open() { 
-  fetch("assets/pw.html")
-          .then(r => {
-            if (!r.ok) throw new Error();
-            return r.text();
-          })
-          .then(html => {
-            document.open();
-            document.write(html);
-            document.close();
-          })
-          .catch(() => {
-            alert("Failed to load page.");
-          }
+  // Renamed from open() to openSite() — avoids collision with the native document.open()
+  function openSite() {
+    fetch("assets/pw.html")
+      .then(r => {
+        if (!r.ok) throw new Error();
+        return r.text();
+      })
+      .then(html => {
+        document.open();
+        document.write(html);
+        document.close();
+      })
+      .catch(() => {
+        alert("Failed to load page.");
+      });  // <-- was missing this closing paren
+  }
 </script>
 <body>
   <div class="card" role="main" aria-labelledby="blockedTitle">
     <div class="left" aria-live="polite">
       <div class="brand-row">
         <div class="emblem" aria-hidden="true">
-          <img src="assets/images/Fortinet.jpg" width=40 height=40 onclick="window.location.href='assets/pw.html'"alt="emblem">
+          <!-- onclick updated to call openSite() instead of the old open() -->
+          <img src="assets/images/Fortinet.jpg" width=40 height=40 onclick="openSite()" alt="emblem">
         </div>
 
         <div class="brand-text">
